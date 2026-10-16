@@ -99,13 +99,13 @@ VALUES (
           { "id": "sub-robust-rover", "name": "Rover", "defaultQuantity": 1, "isRequired": true },
           { "id": "sub-robust-controles", "name": "Controles", "defaultQuantity": 1, "isRequired": true },
           { "id": "sub-robust-antenna", "name": "Antenna", "defaultQuantity": 1, "isRequired": true },
-          { "id": "sub-robust-trbadge", "name": "Trbadge", "defaultQuantity: 1, "isRequired": true },
+          { "id": "sub-robust-trbadge", "name": "Trbadge", "defaultQuantity": 1, "isRequired": true },
           { "id": "sub-robust-power-bank-road", "name": "Power bank road", "defaultQuantity": 1, "isRequired": true },
           { "id": "sub-robust-charger-c-type", "name": "Charger c type", "defaultQuantity": 1, "isRequired": true }
         ]
       }
     ]
-  }''::jsonb,
+  }'::jsonb,
   now()
 )
 ON CONFLICT (key) DO UPDATE

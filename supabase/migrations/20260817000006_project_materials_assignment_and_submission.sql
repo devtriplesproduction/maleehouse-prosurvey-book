@@ -10,7 +10,7 @@ ALTER TABLE public.material_requests DROP CONSTRAINT IF EXISTS material_requests
 
 ALTER TABLE public.material_requests 
   ADD CONSTRAINT material_requests_status_check 
-  CHECK (status IN ('assigned', 'submitted', 'returned', 'requested', 'approved', 'delivered', 'rejected'));
+  CHECK (status IN ('assigned', 'submitted', 'returned', 'requested', 'approved', 'delivered', 'rejected', 'lost', 'missing'));
 
 ALTER TABLE public.material_requests 
   ALTER COLUMN status SET DEFAULT 'assigned';
