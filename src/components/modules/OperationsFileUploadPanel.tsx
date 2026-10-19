@@ -125,7 +125,10 @@ export function OperationsFileUploadPanel({
   const isField = userRole === 'field';
 
   const isProjectClosed = projectStatus === 'completed' || projectStatus === 'archived';
-  const isMidstage = projectStatus && projectStatus !== 'project_created' && projectStatus !== 'data_collection';
+  const isMidstage = projectStatus && projectStatus !== 'project_created';
+
+  const [submittedSections, setSubmittedSections] = useState<Record<string, number>>({});
+  const [sessionUploadedDocIds, setSessionUploadedDocIds] = useState<Set<string>>(new Set());
 
   const hasFieldTeam = (teamMembers || []).some(
     (m: any) => m.role === 'field' || m.role === 'lidar_specialist' || m.profiles?.role === 'field' || m.profiles?.role === 'lidar_specialist'
@@ -135,6 +138,82 @@ export function OperationsFileUploadPanel({
   const controlPointDocs = files.filter((f: any) => f.category === 'control_point_image');
   const surveyDocs = files.filter((f: any) => f.category === 'survey_data' || f.category === 'control_point_csv');
   const finalDocs = files.filter((f: any) => f.category === 'final_file');
+
+  const sortedClientDocs = [...clientDocs].sort((a: any, b: any) => {
+    const timeA = new Date(a.uploaded_at || a.created_at || 0).getTime();
+    const timeB = new Date(b.uploaded_at || b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
+  const latestClientDoc = sortedClientDocs[0];
+  const latestClientDocTime = latestClientDoc ? new Date(latestClientDoc.uploaded_at || latestClientDoc.created_at || 0).getTime() : 0;
+
+  const hasNewClientDocUpload = (() => {
+    if (clientDocs.length === 0) return false;
+    if (submittedSections.client && submittedSections.client >= latestClientDocTime) {
+      return false;
+    }
+    if (clientDocs.some((f: any) => sessionUploadedDocIds.has(f.id))) {
+      return true;
+    }
+    if (!isMidstage) {
+      return !submittedSections.client;
+    }
+    const lastClientSubmitTime = (activityLogs || []).reduce((max: number, l: any) => {
+      if (
+        l.action === 'SUPPLEMENTAL_UPLOAD_NOTIFIED' ||
+        l.action === 'DISPATCHED_TO_FIELD' ||
+        l.stage === 'field_assigned' ||
+        (l.action === 'STAGE_TRANSITION' && l.details?.to_stage === 'field_assigned')
+      ) {
+        const t = new Date(l.created_at || 0).getTime();
+        return t > max ? t : max;
+      }
+      return max;
+    }, 0);
+    if (lastClientSubmitTime > 0) {
+      return latestClientDocTime > lastClientSubmitTime;
+    }
+    return false;
+  })();
+
+  const allSurveyFiles = [...surveyDocs, ...controlPointDocs];
+  const sortedSurveyFiles = [...allSurveyFiles].sort((a: any, b: any) => {
+    const timeA = new Date(a.uploaded_at || a.created_at || 0).getTime();
+    const timeB = new Date(b.uploaded_at || b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
+  const latestSurveyFile = sortedSurveyFiles[0];
+  const latestSurveyFileTime = latestSurveyFile ? new Date(latestSurveyFile.uploaded_at || latestSurveyFile.created_at || 0).getTime() : 0;
+
+  const hasNewSurveyUpload = (() => {
+    if (surveyDocs.length === 0 || controlPointDocs.length === 0) return false;
+    if (submittedSections.survey && submittedSections.survey >= latestSurveyFileTime) {
+      return false;
+    }
+    if (allSurveyFiles.some((f: any) => sessionUploadedDocIds.has(f.id))) {
+      return true;
+    }
+    if (projectStatus === 'data_collection' || projectStatus === 'project_created') {
+      return !submittedSections.survey;
+    }
+    const lastSurveySubmitTime = (activityLogs || []).reduce((max: number, l: any) => {
+      if (
+        l.stage === 'data_sync' ||
+        (l.action === 'STAGE_TRANSITION' && l.details?.to_stage === 'data_sync') ||
+        l.action === 'SURVEY_DATA_SUBMITTED' ||
+        l.action === 'FIELD_SURVEY_APPROVED' ||
+        l.action === 'FIELD_SURVEY_REJECTED'
+      ) {
+        const t = new Date(l.created_at || 0).getTime();
+        return t > max ? t : max;
+      }
+      return max;
+    }, 0);
+    if (lastSurveySubmitTime > 0) {
+      return latestSurveyFileTime > lastSurveySubmitTime;
+    }
+    return false;
+  })();
 
   const sortedRevisions = [...(cadRevisions || [])].sort((a: any, b: any) => {
     const timeA = new Date(a.submitted_at || a.created_at || 0).getTime();
@@ -180,9 +259,15 @@ export function OperationsFileUploadPanel({
   );
 
   const hasNewFinalUpload = (() => {
-    if (!latestFinal) return false;
+    if (finalDocs.length === 0) return false;
+    const finalTime = latestFinal ? new Date(latestFinal.uploaded_at || latestFinal.created_at || 0).getTime() : 0;
+    if (submittedSections.final && submittedSections.final >= finalTime) {
+      return false;
+    }
+    if (finalDocs.some((f: any) => sessionUploadedDocIds.has(f.id))) {
+      return true;
+    }
     if (!latestFinalRevision) return true;
-    const finalTime = new Date(latestFinal.uploaded_at || latestFinal.created_at || 0).getTime();
     const revTime = new Date(latestFinalRevision.submitted_at || latestFinalRevision.updated_at || latestFinalRevision.created_at || 0).getTime();
     return finalTime > revTime;
   })();
@@ -234,6 +319,18 @@ export function OperationsFileUploadPanel({
       setIsUploading(false);
       setUploadProgress(0);
       onUpdateFiles?.([registerResult.data, ...files]);
+      setSessionUploadedDocIds(prev => new Set(prev).add(registerResult.data?.id || uploadResult.fileName));
+      setSubmittedSections(prev => { const n = { ...prev }; delete n.survey; return n; });
+
+      if (registerResult.data?.updated_project_stage) {
+        onUpdateProject?.({ status: registerResult.data.updated_project_stage });
+        toast({
+          title: 'Workflow Rewound',
+          description: `New control point uploaded. Project moved back to ${registerResult.data.updated_project_stage} to resume work.`,
+          variant: 'default'
+        });
+        router.refresh();
+      }
 
     } catch (err: any) {
       console.error(err);
@@ -284,6 +381,18 @@ export function OperationsFileUploadPanel({
       setIsUploading(false);
       setUploadProgress(0);
       onUpdateFiles?.([registerResult.data, ...files]);
+      setSessionUploadedDocIds(prev => new Set(prev).add(registerResult.data?.id || uploadResult.fileName));
+      setSubmittedSections(prev => { const n = { ...prev }; delete n.client; return n; });
+
+      if (registerResult.data?.updated_project_stage) {
+        onUpdateProject?.({ status: registerResult.data.updated_project_stage });
+        toast({
+          title: 'Workflow Rewound',
+          description: `New client document uploaded. Project moved back to ${registerResult.data.updated_project_stage} to resume work.`,
+          variant: 'default'
+        });
+        router.refresh();
+      }
 
     } catch (err: any) {
       console.error(err);
@@ -318,11 +427,19 @@ export function OperationsFileUploadPanel({
         'Client documents uploaded. Dispatched for Field Team assignment and survey collection.'
       );
       if (res?.success) {
+        setSubmittedSections(prev => ({ ...prev, client: Date.now() }));
+        setSessionUploadedDocIds(prev => {
+          const next = new Set(prev);
+          clientDocs.forEach((d: any) => next.delete(d.id));
+          return next;
+        });
         toast({
           title: 'Dispatched to Field',
           description: 'Project moved to Field Team Assignment stage successfully.',
           variant: 'success'
         });
+        onUpdateProject?.({ status: 'field_assigned' });
+        router.refresh();
       } else {
         toast({
           title: 'Dispatch Failed',
@@ -339,11 +456,18 @@ export function OperationsFileUploadPanel({
     startTransition(async () => {
       const res = await notifySupplementalUploadAction(projectId);
       if (res.success) {
+        setSubmittedSections(prev => ({ ...prev, client: Date.now() }));
+        setSessionUploadedDocIds(prev => {
+          const next = new Set(prev);
+          clientDocs.forEach((d: any) => next.delete(d.id));
+          return next;
+        });
         toast({
           title: 'Update Sent',
           description: 'Notification sent to next stage accounts regarding the new file upload.',
           variant: 'success'
         });
+        router.refresh();
       } else {
         toast({
           title: 'Notification Failed',
@@ -394,6 +518,18 @@ export function OperationsFileUploadPanel({
       setIsUploading(false);
       setUploadProgress(0);
       onUpdateFiles?.([registerResult.data, ...files]);
+      setSessionUploadedDocIds(prev => new Set(prev).add(registerResult.data?.id || uploadResult.fileName));
+      setSubmittedSections(prev => { const n = { ...prev }; delete n.survey; return n; });
+
+      if (registerResult.data?.updated_project_stage) {
+        onUpdateProject?.({ status: registerResult.data.updated_project_stage });
+        toast({
+          title: 'Workflow Rewound',
+          description: `New survey data uploaded. Project moved back to ${registerResult.data.updated_project_stage} to resume work.`,
+          variant: 'default'
+        });
+        router.refresh();
+      }
 
     } catch (err: any) {
       console.error(err);
@@ -444,24 +580,17 @@ export function OperationsFileUploadPanel({
       setIsUploading(false);
       setUploadProgress(0);
       onUpdateFiles?.([registerResult.data, ...files]);
+      setSessionUploadedDocIds(prev => new Set(prev).add(registerResult.data?.id || uploadResult.fileName));
+      setSubmittedSections(prev => { const n = { ...prev }; delete n.final; return n; });
 
-      // Auto-register final deliverable CAD revision
-      try {
-        const { submitCADRevisionAction } = await import("@/actions/operations.actions");
-        await submitCADRevisionAction(
-          projectId,
-          uploadResult.fileName,
-          uploadResult.publicUrl,
-          'Final Deliverable submission',
-          'final'
-        );
-      } catch (err) {
-        console.error("CAD revision auto-registration failed:", err);
-      }
-
-      if (projectStatus !== 'final_review' && !isProjectClosed) {
-        await updateProjectStageAction(projectId, 'final_review', 'Final Deliverable uploaded. Ready for validation.').catch(console.error);
-        onUpdateProject?.({ status: 'final_review' });
+      if (registerResult.data?.updated_project_stage) {
+        onUpdateProject?.({ status: registerResult.data.updated_project_stage });
+        toast({
+          title: 'Workflow Rewound',
+          description: `New deliverable uploaded. Project status moved to ${registerResult.data.updated_project_stage}.`,
+          variant: 'default'
+        });
+        router.refresh();
       }
 
       router.refresh();
@@ -593,14 +722,85 @@ export function OperationsFileUploadPanel({
       );
 
       if (stageRes?.success) {
+        setSubmittedSections(prev => ({ ...prev, survey: Date.now() }));
+        setSessionUploadedDocIds(prev => {
+          const next = new Set(prev);
+          allSurveyFiles.forEach((d: any) => next.delete(d.id));
+          return next;
+        });
         toast({
           title: 'Submitted Survey Data',
           description: 'Project moved to Data Sync stage.',
           variant: 'success'
         });
+        onUpdateProject?.({ status: 'data_sync' });
+        router.refresh();
       } else {
         toast({
           title: 'Submission Failed',
+          description: stageRes?.error || 'An error occurred.',
+          variant: 'error'
+        });
+      }
+      setLoadingAction(null);
+    });
+  };
+
+  const handleSubmitFinalReport = () => {
+    setLoadingAction('submit_final_report');
+    startTransition(async () => {
+      if (finalDocs.length === 0) {
+        toast({
+          title: 'Submission Failed',
+          description: 'Please upload a final deliverable first.',
+          variant: 'error'
+        });
+        return;
+      }
+
+      const targetFinal = latestFinal || finalDocs[0];
+      const { submitCADRevisionAction } = await import("@/actions/operations.actions");
+      const revRes = await submitCADRevisionAction(
+        projectId,
+        targetFinal.file_name,
+        targetFinal.file_url,
+        'Final Deliverable submission',
+        'final'
+      );
+
+      if (!revRes.success) {
+        toast({
+          title: 'Submission Failed',
+          description: revRes.error || 'Failed to submit final deliverable revision.',
+          variant: 'error'
+        });
+        setLoadingAction(null);
+        return;
+      }
+
+      const stageRes = await updateProjectStageAction(
+        projectId,
+        'final_review',
+        'Final Deliverable submitted for engineering validation.'
+      );
+
+      if (stageRes?.success) {
+        setSubmittedSections(prev => ({ ...prev, final: Date.now() }));
+        setSessionUploadedDocIds(prev => {
+          const next = new Set(prev);
+          finalDocs.forEach((d: any) => next.delete(d.id));
+          return next;
+        });
+        toast({
+          title: 'Submitted for Validation',
+          description: 'Project moved to Final Review stage.',
+          variant: 'success'
+        });
+        onUpdateProject?.({ status: 'final_review' });
+        router.refresh();
+      } else {
+        toast({
+          title: 'Stage Update Failed',
           description: stageRes?.error || 'An error occurred.',
           variant: 'error'
         });
@@ -791,26 +991,26 @@ export function OperationsFileUploadPanel({
           )}
 
           {/* Action Button */}
-          {isEngineer && (
+          {(isAdmin || isEngineer) && (
             isMidstage ? (
               <button
                 onClick={handleSendUpdate}
-                disabled={isPending || clientDocs.length === 0}
-                className="w-full mt-4 flex items-center justify-center gap-2 px-5 py-3 border-2 border-indigo-600/20 hover:border-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 dark:border-indigo-400/20 dark:hover:border-indigo-400 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-bold rounded-xl text-sm disabled:opacity-50 transition-all shadow-sm group"
+                disabled={isPending || !hasNewClientDocUpload}
+                className="w-full mt-4 flex items-center justify-center gap-2 px-5 py-3 border-2 border-indigo-600/20 hover:border-indigo-600 bg-indigo-50/50 hover:bg-indigo-50 dark:border-indigo-400/20 dark:hover:border-indigo-400 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-bold rounded-xl text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm group"
               >
                 {isPending && loadingAction === 'send_update' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bell className="w-4 h-4 group-hover:animate-bounce" />}
-                Notify Team of Supplemental Documents
+                {!hasNewClientDocUpload ? "No New Client Documents Uploaded" : "Notify Team of Supplemental Documents"}
               </button>
             ) : (
               <div className="mt-4 space-y-2">
                 <button
                   onClick={handleSendToField}
-                  disabled={isPending || files.length === 0 || !hasFieldTeam}
-                  className="w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm disabled:opacity-50 transition-all shadow-sm"
+                  disabled={isPending || !hasNewClientDocUpload || !hasFieldTeam}
+                  className="w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
                   title={!hasFieldTeam ? "Please assign a Field Crew member first" : undefined}
                 >
                   {isPending && loadingAction === 'send_to_field' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  Proceed to Field Assignment
+                  {!hasNewClientDocUpload && clientDocs.length > 0 ? "Client Documents Dispatched" : "Proceed to Field Assignment"}
                 </button>
                 {!hasFieldTeam && (
                   <p className="text-xs text-amber-600 dark:text-amber-400 font-medium text-center">
@@ -956,14 +1156,26 @@ export function OperationsFileUploadPanel({
           )}
 
           {/* Submit Survey Data Button */}
-          {(isField || isAdmin) && !isProjectClosed && (
+          {(isAdmin || isField || isEngineer) && !isProjectClosed && (
             <button
               onClick={handleSubmitSurveyData}
-              disabled={isPending || surveyDocs.length === 0 || controlPointDocs.length === 0}
+              disabled={isPending || !hasNewSurveyUpload}
               className="w-full mt-4 flex items-center justify-center gap-2 px-5 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
             >
-              {isPending && loadingAction === 'submit_survey_data' ? <Loader2 className="w-4 h-4 animate-spin" /> : (projectStatus === "data_sync" ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />)}
-              {projectStatus === "data_sync" ? "Resubmit / Update Survey Data" : "Submit Survey Data"}
+              {isPending && loadingAction === 'submit_survey_data' ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : projectStatus === "data_sync" ? (
+                <CheckCircle2 className="w-4 h-4" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+              {projectStatus === "data_sync" && !hasNewSurveyUpload
+                ? "Survey Data Submitted (Awaiting Validation)"
+                : !hasNewSurveyUpload && surveyDocs.length > 0
+                ? "No New Survey Data Uploaded"
+                : projectStatus === "data_sync"
+                ? "Resubmit / Update Survey Data"
+                : "Submit Survey Data"}
             </button>
           )}
         </div>
@@ -1093,6 +1305,26 @@ export function OperationsFileUploadPanel({
                 </div>
               )}
             </div>
+          )}
+
+          {/* Submit Final Deliverable Button */}
+          {(isEngineer || isAdmin) && !isProjectClosed && (
+            <button
+              onClick={handleSubmitFinalReport}
+              disabled={isPending || !hasNewFinalUpload || (latestCADRevision?.status === 'pending_review' && latestCADRevision?.revision_type === 'final')}
+              className="w-full mt-4 flex items-center justify-center gap-2 px-5 py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+            >
+              {isPending && loadingAction === 'submit_final_report' ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+              {latestCADRevision?.status === 'pending_review' && latestCADRevision?.revision_type === 'final'
+                ? 'Validation Pending'
+                : !hasNewFinalUpload && finalDocs.length > 0
+                ? 'No New Deliverable Uploaded'
+                : 'Submit Final Report & Send for Validation'}
+            </button>
           )}
 
           {/* Engineer Final Deliverable Validation Buttons */}

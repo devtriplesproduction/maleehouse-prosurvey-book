@@ -189,6 +189,14 @@ export function DigitalVault({ projectId, files, userRole }: DigitalVaultProps) 
         variant: 'success'
       });
 
+      if (registerResult.data?.updated_project_stage) {
+        toast({
+          title: 'Workflow Rewound',
+          description: `Project state updated to ${registerResult.data.updated_project_stage} to resume work.`,
+          variant: 'default'
+        });
+      }
+
       setTimeout(() => {
         setIsUploading(false);
         setUploadProgress(0);

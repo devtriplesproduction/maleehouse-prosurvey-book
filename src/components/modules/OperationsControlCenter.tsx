@@ -147,6 +147,14 @@ export function OperationsControlCenter({
 
       if (registerResult.success) {
         toast({ title: "Document Uploaded", description: `"${file.name}" uploaded successfully.`, variant: "success" });
+        if (registerResult.data?.updated_project_stage) {
+          toast({
+            title: "Workflow Rewound",
+            description: `Project state updated to ${registerResult.data.updated_project_stage} to resume work.`,
+            variant: "default"
+          });
+          router.refresh();
+        }
       } else {
         throw new Error(registerResult.error || "Failed to register file in database");
       }

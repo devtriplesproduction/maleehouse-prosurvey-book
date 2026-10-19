@@ -436,7 +436,8 @@ async function validateStageTransition(
 export async function transitionWorkflowAction(
   projectId: string,
   newStage: string,
-  comment?: string
+  comment?: string,
+  options?: { isAutomatedRewind?: boolean }
 ): Promise<WorkflowResponse> {
   try {
     const auth = await requireProjectAccess(projectId, { requireUnlocked: false });
@@ -446,42 +447,74 @@ export async function transitionWorkflowAction(
     const role = auth.role as Role;
     const supabase: any = await createClient();
 
-    const stageCheck = canUpdateProjectStage(role, newStage);
-    if (!stageCheck.isAllowed) {
-      return { success: false, error: stageCheck.error || "Access denied." };
-    }
-
-    // 3. Fetch current status to determine from_stage
-    const { data: project } = await supabase.from("projects").select("status, is_frozen, dispatch_override_approved").eq("id", projectId).single();
+    // Fetch current status to determine from_stage
+    const { data: project } = await supabase.from("projects").select("status, is_frozen, dispatch_override_approved, workflow_type").eq("id", projectId).single();
     const fromStage = project?.status || null;
 
-    if (fromStage === "completed" || fromStage === "delivered" || fromStage === "archived") {
-      return { success: false, error: "Project is locked (completed/archived) and cannot be modified." };
+    if (fromStage === newStage) {
+      return { success: true, data: project, error: null };
     }
 
     if (project?.is_frozen) {
       return { success: false, error: "PROJECT FROZEN: All operational work, task completions, and stage transitions are disabled due to outstanding payments." };
     }
 
-    // 3b. Operational Stage Gate Validation
-    const STAGE_ORDER = [
-      "lead",
-      "payment_pending",
-      "payment_done",
-      "ready_for_dispatch",
-      "project_created",
-      "data_collection",
-      "review",
-      "field_assigned",
-      "field_work",
-      "data_sync",
-      "final_review",
-      "completed",
-      "archived"
-    ];
-    const currentStageIndex = STAGE_ORDER.indexOf(fromStage || "lead");
-    const newStageIndex = STAGE_ORDER.indexOf(newStage);
-    const isRollback = newStageIndex < currentStageIndex;
+    // Operational Stage Gate Validation
+    let isRollback = false;
+    let isDirectAdvance = false;
+
+    if (project?.workflow_type) {
+      const { getTemplateConfig } = await import("@/lib/workflow-engine");
+      const template = getTemplateConfig(project.workflow_type);
+      const pipeline = template?.pipeline || [];
+      const currentIndex = pipeline.indexOf(fromStage || "project_created");
+      const targetIndex = pipeline.indexOf(newStage);
+
+      if (targetIndex !== -1 && currentIndex !== -1) {
+        isRollback = targetIndex < currentIndex;
+        isDirectAdvance = targetIndex > currentIndex;
+      }
+    }
+
+    if (!isRollback && !isDirectAdvance) {
+      const STAGE_ORDER = [
+        "lead",
+        "lead_created",
+        "quotation_requested",
+        "quotation_sent",
+        "payment_pending",
+        "payment_done",
+        "ready_for_dispatch",
+        "project_created",
+        "data_collection",
+        "prototype",
+        "gis_design",
+        "field_assigned",
+        "field_work",
+        "data_sync",
+        "review",
+        "final_review",
+        "completed",
+        "delivered",
+        "archived"
+      ];
+      const currentStageIndex = STAGE_ORDER.indexOf(fromStage || "lead");
+      const newStageIndex = STAGE_ORDER.indexOf(newStage);
+      isRollback = newStageIndex < currentStageIndex;
+    }
+
+    // Only enforce forward stage update role permissions if not a rollback/rewind
+    if (!isRollback && !options?.isAutomatedRewind) {
+      const stageCheck = canUpdateProjectStage(role, newStage);
+      if (!stageCheck.isAllowed) {
+        return { success: false, error: stageCheck.error || "Access denied." };
+      }
+    }
+
+    // Only lock completed if not a rollback/rewind triggered by new data or rework
+    if ((fromStage === "completed" || fromStage === "delivered" || fromStage === "archived") && !isRollback) {
+      return { success: false, error: "Project is locked (completed/archived) and cannot be modified." };
+    }
 
     if (role !== "admin" && !isRollback) {
       const gateCheck = await validateStageTransition(projectId, newStage, project);
@@ -516,11 +549,15 @@ export async function transitionWorkflowAction(
       updatedProject = rpcResult.project;
       fromStageFinal = rpcResult.from_stage || fromStage;
     } else {
-      // Fallback path if RPC not migrated yet
+      // Fallback path if RPC not migrated yet or if rolling back from completed/archived project
       if (rpcError) {
         console.warn("transition_project_stage RPC unavailable, using multi-query fallback:", rpcError.message);
       } else if (rpcResult && !rpcResult.ok) {
-        return { success: false, error: rpcResult.error || "Stage transition failed." };
+        if (fromStage === "completed" || fromStage === "archived" || fromStage === "delivered" || rpcResult.error?.includes("locked") || isRollback) {
+          console.warn("Project was completed/locked or RPC rejected rollback, proceeding with adminClient fallback to update stage:", rpcResult.error);
+        } else {
+          return { success: false, error: rpcResult.error || "Stage transition failed." };
+        }
       }
 
       const adminClient: any = createAdminClient();
@@ -795,7 +832,8 @@ export async function archiveProjectAction(
  */
 export async function reopenProjectAction(
   projectId: string,
-  reason: string
+  reason: string,
+  targetStage?: string
 ): Promise<WorkflowResponse> {
   try {
     const profile: any = await getUserProfileAction();
@@ -812,14 +850,16 @@ export async function reopenProjectAction(
     const supabase: any = await createClient();
 
     // 1. Verify project is completed
-    const { data: project } = await supabase.from("projects").select("status, name").eq("id", projectId).single();
-    if (project?.status !== 'completed') {
+    const { data: project } = await supabase.from("projects").select("status, name, workflow_type").eq("id", projectId).single();
+    if (project?.status !== 'completed' && project?.status !== 'delivered') {
       return { success: false, error: "Only completed projects can be reopened." };
     }
 
-    // 2. Update status to data_sync
+    const reopenStage = targetStage || 'data_collection';
+
+    // 2. Update status
     const { data: updatedProject, error: updateError } = await supabase.from("projects").update({
-      status: "data_sync",
+      status: reopenStage,
       updated_at: new Date().toISOString()
     }).eq("id", projectId).select().single();
 
@@ -830,17 +870,17 @@ export async function reopenProjectAction(
       project_id: projectId,
       user_id: profile.id,
       action: "PROJECT_REOPENED",
-      details: { reopened_by: profile.email, reason },
+      details: { reopened_by: profile.email, reason, to_stage: reopenStage },
       created_at: new Date().toISOString()
     });
 
     // 4. Log Workflow History
     await supabase.from("workflow_history").insert({
       project_id: projectId,
-      from_stage: "completed",
-      to_stage: "data_sync",
+      from_stage: project.status,
+      to_stage: reopenStage,
       changed_by: profile.id,
-      comment: `Project Reopened. Reason: ${reason}`,
+      comment: `Project Reopened to ${reopenStage}. Reason: ${reason}`,
       created_at: new Date().toISOString()
     });
 

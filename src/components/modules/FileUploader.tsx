@@ -80,6 +80,14 @@ export function FileUploader({ projectId, open, onOpenChange }: FileUploaderProp
         description: `${file.name} is now available in project assets.`,
         variant: "success"
       });
+
+      if (registerResult.data?.updated_project_stage) {
+        toast({
+          title: "Workflow Rewound",
+          description: `Project state updated to ${registerResult.data.updated_project_stage} to resume work.`,
+          variant: "default"
+        });
+      }
       
       setTimeout(() => {
         onOpenChange(false);

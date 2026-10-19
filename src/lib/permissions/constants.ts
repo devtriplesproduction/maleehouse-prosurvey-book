@@ -21,7 +21,7 @@ export const PERMISSIONS = {
       "data_collection", "field_work", "data_sync",
       "field_assigned", "review", "payment_pending", "completed", "final_review"
     ],
-    field: ["field_work", "field_assigned", "field_in_progress", "field_completed", "data_sync"],
+    field: ["data_collection", "field_work", "field_assigned", "field_in_progress", "field_completed", "data_sync"],
     hr: [],
     developer: [],
   } as Record<Role, string[]>,

@@ -12,6 +12,8 @@ import { getUserProfileAction } from './auth.actions';
 import { verifyProjectAccess, type Role } from '@/lib/permissions/permissions';
 import { notifySupplementalUploadAction } from './notification.actions';
 import { logWorkflowAudit } from "@/lib/workflow/logWorkflowAudit";
+import { getTemplateConfig, getRewindStageForCategory } from "@/lib/workflow-engine";
+import { transitionWorkflowAction } from "./workflow.actions";
 
 export async function registerFileAction(payload: RegisterFileInput): Promise<ActionResponse> {
   try {
@@ -37,10 +39,10 @@ export async function registerFileAction(payload: RegisterFileInput): Promise<Ac
       return { success: false, error: accessCheck.error || "Permission denied." };
     }
 
-    // 1. Enforce Freeze and Payment Holds
+    // 1. Enforce Freeze and Payment Holds & Fetch Status
     const { data: project } = await supabase
       .from('projects')
-      .select('is_frozen')
+      .select('status, is_frozen, workflow_type')
       .eq('id', validatedFields.data.project_id)
       .single();
 
@@ -100,9 +102,44 @@ export async function registerFileAction(payload: RegisterFileInput): Promise<Ac
       console.error("Failed to notify supplemental upload", e);
     }
 
-    revalidatePath(`/projects/${validatedFields.data.project_id}`);
+    let updatedStage: string | null = null;
+    let stageRewound = false;
 
-    return { success: true, data: normalizeData(insertedFile) };
+    // Automatic Stage Rewind: If new data/files are uploaded to an earlier workflow step,
+    // automatically rewind the project state so team members can resume work from that step.
+    const rewindInfo = getRewindStageForCategory(project?.status, validatedFields.data.category, project?.workflow_type);
+    if (rewindInfo.shouldRewind && rewindInfo.targetStage) {
+      try {
+        const transitionResult = await transitionWorkflowAction(
+          validatedFields.data.project_id,
+          rewindInfo.targetStage,
+          `Workflow rewound to ${rewindInfo.targetStage} due to newly uploaded ${validatedFields.data.category} (${validatedFields.data.file_name})`,
+          { isAutomatedRewind: true }
+        );
+        if (transitionResult.success) {
+          updatedStage = rewindInfo.targetStage;
+          stageRewound = true;
+        } else {
+          console.warn("Automated workflow rewind failed:", transitionResult.error);
+        }
+      } catch (transErr) {
+        console.error("Error executing automated workflow rewind:", transErr);
+      }
+    }
+
+    revalidatePath(`/projects/${validatedFields.data.project_id}`);
+    revalidatePath("/operations");
+    revalidatePath("/field");
+    revalidatePath("/engineer");
+
+    return {
+      success: true,
+      data: {
+        ...normalizeData(insertedFile),
+        updated_project_stage: updatedStage,
+        stage_rewound: stageRewound,
+      }
+    };
   } catch (error: any) {
     return { success: false, error: error?.message || 'An unexpected error occurred.' };
   }

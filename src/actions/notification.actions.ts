@@ -516,6 +516,16 @@ export async function notifySupplementalUploadAction(projectId: string) {
         relatedProjectId: projectId,
       }))
     )
+
+    await supabase.from('activity_logs').insert({
+      project_id: projectId,
+      user_id: profile.id,
+      action: 'SUPPLEMENTAL_UPLOAD_NOTIFIED',
+      details: {
+        message: `${uploaderName} notified team of supplemental documents for "${project.name}".`
+      }
+    })
+
     return { success: true }
   } catch (err: any) {
     return { success: false, error: err.message }

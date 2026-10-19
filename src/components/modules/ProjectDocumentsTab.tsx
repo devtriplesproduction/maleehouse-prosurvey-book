@@ -166,6 +166,15 @@ export default function ProjectDocumentsTab({
         variant: 'success'
       });
 
+      if (registerResult.data?.updated_project_stage) {
+        toast({
+          title: 'Workflow Rewound',
+          description: `Project state updated to ${registerResult.data.updated_project_stage} to resume work.`,
+          variant: 'default'
+        });
+        router.refresh();
+      }
+
       setTimeout(() => {
         setIsUploading(false);
         setUploadProgress(0);

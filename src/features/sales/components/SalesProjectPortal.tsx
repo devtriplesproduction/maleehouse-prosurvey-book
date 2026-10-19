@@ -226,6 +226,12 @@ export function SalesProjectPortal({ project, comments = [], files = [] }: Sales
         toast.success("Document Uploaded", { 
           description: `${fileToUpload.name} saved to vault.` 
         });
+        if (result.data?.updated_project_stage) {
+          toast.info("Workflow Rewound", {
+            description: `Project state updated to ${result.data.updated_project_stage} to resume work.`
+          });
+          router.refresh();
+        }
         setLocalFiles((prev: any) => [
           ...prev,
           {

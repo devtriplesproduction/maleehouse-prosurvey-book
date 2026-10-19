@@ -48,7 +48,7 @@
     "completed": {
       "display_name": "Project Deliverables Handed Over",
       "allowed_roles": ["admin"],
-      "allow_rollback": false,
+      "allow_rollback": true,
       "transitions_to": [],
       "task_generation": [],
       "payment_gate": null,

@@ -19,6 +19,8 @@ interface ProjectWorkflowTabProps {
   userRole: string;
   isFrozen?: boolean;
   history?: any[];
+  activityLogs?: any[];
+  projectCreatedAt?: string;
 }
 
 export interface StageConfig {
@@ -102,7 +104,9 @@ export default function ProjectWorkflowTab({
   projectStatus,
   userRole,
   isFrozen = false,
-  history = []
+  history = [],
+  activityLogs = [],
+  projectCreatedAt
 }: ProjectWorkflowTabProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -213,10 +217,49 @@ export default function ProjectWorkflowTab({
                 const isCompleted = idx < currentIndex;
                 const isActive = idx === currentIndex;
                 
-                let completionRecord = history.find((h: any) => h.new_status === stage.statusKey);
-                if (stage.statusKey === 'project_created' && history.length > 0) {
-                  completionRecord = history[history.length - 1]; 
+                let completionRecord = history.find((h: any) => 
+                  h.to_stage === stage.statusKey || 
+                  h.new_status === stage.statusKey || 
+                  h.to_status === stage.statusKey
+                );
+
+                if (!completionRecord && (activityLogs || []).length > 0) {
+                  completionRecord = activityLogs.find((l: any) => 
+                    l.details?.to_stage === stage.statusKey || 
+                    l.details?.new_status === stage.statusKey ||
+                    l.stage === stage.statusKey
+                  );
                 }
+
+                if (!completionRecord && stage.statusKey === 'project_created') {
+                  if (history.length > 0) {
+                    completionRecord = history[history.length - 1];
+                  } else if (projectCreatedAt) {
+                    completionRecord = { created_at: projectCreatedAt };
+                  }
+                }
+
+                if (!completionRecord && isCompleted) {
+                  completionRecord = history.find((h: any) => h.from_stage === stage.statusKey);
+                  if (!completionRecord) {
+                    for (let nextIdx = idx + 1; nextIdx <= currentIndex; nextIdx++) {
+                      const nextKey = WORKFLOW_STAGES[nextIdx]?.statusKey;
+                      const nextMatch = history.find((h: any) => 
+                        h.to_stage === nextKey || 
+                        h.new_status === nextKey || 
+                        h.to_status === nextKey
+                      );
+                      if (nextMatch) {
+                        completionRecord = nextMatch;
+                        break;
+                      }
+                    }
+                  }
+                }
+
+                const displayDate = (isCompleted || isActive) && completionRecord?.created_at
+                  ? new Date(completionRecord.created_at)
+                  : null;
 
                 return (
                   <tr 
@@ -234,13 +277,13 @@ export default function ProjectWorkflowTab({
                     </td>
                     
                     <td className="py-3 px-4">
-                      {isCompleted && completionRecord ? (
+                      {displayDate ? (
                         <div className="flex flex-col">
                           <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                            {new Date(completionRecord.created_at).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}
+                            {displayDate.toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}
                           </span>
                           <span className="text-xs text-slate-500 font-medium">
-                            {new Date(completionRecord.created_at).getFullYear()}
+                            {displayDate.getFullYear()}
                           </span>
                         </div>
                       ) : (
