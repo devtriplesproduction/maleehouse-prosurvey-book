@@ -21,7 +21,25 @@ interface ProjectWorkflowTabProps {
   history?: any[];
   activityLogs?: any[];
   projectCreatedAt?: string;
+  projectUpdatedAt?: string;
 }
+
+const formatStageDate = (date: Date) => {
+  return date.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+};
+
+const formatStageTime = (date: Date) => {
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
+};
 
 export interface StageConfig {
   id: number;
@@ -99,6 +117,80 @@ export const WORKFLOW_STAGES: StageConfig[] = [
   }
 ];
 
+function getStageTimestamp(
+  stage: StageConfig,
+  idx: number,
+  currentIndex: number,
+  history: any[],
+  activityLogs: any[],
+  projectCreatedAt?: string,
+  projectUpdatedAt?: string
+): Date | null {
+  if (idx > currentIndex) return null;
+
+  // 1. Stage 0 / Project Created
+  if (idx === 0 || stage.statusKey === 'project_created') {
+    let match = history.find((h: any) => 
+      h.to_stage === stage.statusKey || 
+      h.to_stage === 'payment_pending' || 
+      h.to_stage === 'lead_created' || 
+      h.to_stage === 'ready_for_dispatch'
+    );
+    if (!match && (activityLogs || []).length > 0) {
+      match = activityLogs.find((l: any) => l.action === 'PROJECT_CREATED' || l.details?.to_stage === stage.statusKey);
+    }
+    if (!match && history.length > 0) {
+      match = history[history.length - 1];
+    }
+    const raw = match?.created_at || projectCreatedAt;
+    return raw ? new Date(raw) : null;
+  }
+
+  // 2. Direct match for entering this stage
+  let match = history.find((h: any) => 
+    h.to_stage === stage.statusKey || 
+    h.new_status === stage.statusKey || 
+    h.to_status === stage.statusKey
+  );
+
+  if (!match && (activityLogs || []).length > 0) {
+    match = activityLogs.find((l: any) => 
+      l.details?.to_stage === stage.statusKey || 
+      l.details?.new_status === stage.statusKey ||
+      l.stage === stage.statusKey
+    );
+  }
+
+  // 3. If stage is completed but no direct entry log, check departure or next stage
+  const isCompleted = idx < currentIndex;
+  if (!match && isCompleted) {
+    match = history.find((h: any) => h.from_stage === stage.statusKey);
+    if (!match) {
+      for (let nextIdx = idx + 1; nextIdx <= currentIndex; nextIdx++) {
+        const nextKey = WORKFLOW_STAGES[nextIdx]?.statusKey;
+        const nextMatch = history.find((h: any) => 
+          h.to_stage === nextKey || 
+          h.new_status === nextKey || 
+          h.to_status === nextKey
+        );
+        if (nextMatch) {
+          match = nextMatch;
+          break;
+        }
+      }
+    }
+  }
+
+  // 4. If stage is active but no history log, fall back to project updated_at or created_at
+  const isActive = idx === currentIndex;
+  if (!match && isActive) {
+    const raw = projectUpdatedAt || projectCreatedAt;
+    return raw ? new Date(raw) : null;
+  }
+
+  return match?.created_at ? new Date(match.created_at) : null;
+}
+
 export default function ProjectWorkflowTab({
   projectId,
   projectStatus,
@@ -106,17 +198,23 @@ export default function ProjectWorkflowTab({
   isFrozen = false,
   history = [],
   activityLogs = [],
-  projectCreatedAt
+  projectCreatedAt,
+  projectUpdatedAt
 }: ProjectWorkflowTabProps) {
   const router = useRouter();
   const { toast } = useToast();
   const [isPending, startTransition] = useTransition();
   const [comment, setComment] = useState('');
   const [localStatus, setLocalStatus] = useState(projectStatus);
+  const [localHistory, setLocalHistory] = useState(history);
 
   useEffect(() => {
     setLocalStatus(projectStatus);
   }, [projectStatus]);
+
+  useEffect(() => {
+    setLocalHistory(history);
+  }, [history]);
 
   // Map project status to current stage index
   const getStageIndex = (status: string): number => {
@@ -166,6 +264,17 @@ export default function ProjectWorkflowTab({
       if (res?.success) {
         if (res.data?.status) {
           setLocalStatus(res.data.status);
+          setLocalHistory(prev => [
+            {
+              id: `temp-${Date.now()}`,
+              project_id: projectId,
+              from_stage: currentStage.statusKey,
+              to_stage: nextStage.statusKey,
+              comment: comment || `Advanced to ${nextStage.label} by ${userRole}`,
+              created_at: new Date().toISOString()
+            },
+            ...(prev || [])
+          ]);
         }
         toast({
           title: 'Workflow Advanced',
@@ -173,6 +282,7 @@ export default function ProjectWorkflowTab({
           variant: 'success'
         });
         setComment('');
+        router.refresh();
       } else {
         toast({
           title: 'Transition Gated',
@@ -206,7 +316,7 @@ export default function ProjectWorkflowTab({
             <thead>
               <tr className="border-b border-slate-100 dark:border-white/5">
                 <th className="py-3 px-4 w-16 text-center text-xs font-bold text-slate-500 dark:text-slate-400 capitalize"><Check className="w-4 h-4 mx-auto" /></th>
-                <th className="py-3 px-4 w-32 text-xs font-bold text-slate-500 dark:text-slate-400 capitalize">Date</th>
+                <th className="py-3 px-4 w-40 text-xs font-bold text-slate-500 dark:text-slate-400 capitalize">Date & Time</th>
                 <th className="py-3 px-4 text-xs font-bold text-slate-500 dark:text-slate-400 capitalize">Stage Name</th>
                 <th className="py-3 px-4 w-48 text-xs font-bold text-slate-500 dark:text-slate-400 capitalize">Department</th>
                 <th className="py-3 px-4 w-32 text-xs font-bold text-slate-500 dark:text-slate-400 capitalize">Status</th>
@@ -217,49 +327,15 @@ export default function ProjectWorkflowTab({
                 const isCompleted = idx < currentIndex;
                 const isActive = idx === currentIndex;
                 
-                let completionRecord = history.find((h: any) => 
-                  h.to_stage === stage.statusKey || 
-                  h.new_status === stage.statusKey || 
-                  h.to_status === stage.statusKey
+                const displayDate = getStageTimestamp(
+                  stage,
+                  idx,
+                  currentIndex,
+                  localHistory || [],
+                  activityLogs || [],
+                  projectCreatedAt,
+                  projectUpdatedAt
                 );
-
-                if (!completionRecord && (activityLogs || []).length > 0) {
-                  completionRecord = activityLogs.find((l: any) => 
-                    l.details?.to_stage === stage.statusKey || 
-                    l.details?.new_status === stage.statusKey ||
-                    l.stage === stage.statusKey
-                  );
-                }
-
-                if (!completionRecord && stage.statusKey === 'project_created') {
-                  if (history.length > 0) {
-                    completionRecord = history[history.length - 1];
-                  } else if (projectCreatedAt) {
-                    completionRecord = { created_at: projectCreatedAt };
-                  }
-                }
-
-                if (!completionRecord && isCompleted) {
-                  completionRecord = history.find((h: any) => h.from_stage === stage.statusKey);
-                  if (!completionRecord) {
-                    for (let nextIdx = idx + 1; nextIdx <= currentIndex; nextIdx++) {
-                      const nextKey = WORKFLOW_STAGES[nextIdx]?.statusKey;
-                      const nextMatch = history.find((h: any) => 
-                        h.to_stage === nextKey || 
-                        h.new_status === nextKey || 
-                        h.to_status === nextKey
-                      );
-                      if (nextMatch) {
-                        completionRecord = nextMatch;
-                        break;
-                      }
-                    }
-                  }
-                }
-
-                const displayDate = (isCompleted || isActive) && completionRecord?.created_at
-                  ? new Date(completionRecord.created_at)
-                  : null;
 
                 return (
                   <tr 
@@ -279,15 +355,15 @@ export default function ProjectWorkflowTab({
                     <td className="py-3 px-4">
                       {displayDate ? (
                         <div className="flex flex-col">
-                          <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                            {displayDate.toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                            {formatStageDate(displayDate)}
                           </span>
-                          <span className="text-xs text-slate-500 font-medium">
-                            {displayDate.getFullYear()}
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap">
+                            {formatStageTime(displayDate)}
                           </span>
                         </div>
                       ) : (
-                        <span className="text-sm font-medium text-slate-400">none</span>
+                        <span className="text-xs font-medium text-slate-400">none</span>
                       )}
                     </td>
                     

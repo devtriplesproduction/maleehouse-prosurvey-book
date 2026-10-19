@@ -273,6 +273,7 @@ export function ProjectDetailTabs({
                   history={history}
                   activityLogs={activityLogs}
                   projectCreatedAt={localProject.created_at}
+                  projectUpdatedAt={localProject.updated_at}
                 />
               </div>
             )}

@@ -1,5 +1,6 @@
 import React, { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { notFound, redirect } from "next/navigation";
 
 export const dynamic = 'force-dynamic';
@@ -138,6 +139,7 @@ interface ProjectDetailPageProps {
 
 async function ProjectContentWrapper({ project, profile, user, role, theme, params }: any) {
   const supabase: any = await createClient();
+  const adminSupabase: any = createAdminClient();
 
   const [
     historyRes,
@@ -148,7 +150,7 @@ async function ProjectContentWrapper({ project, profile, user, role, theme, para
     activityLogsRes,
     materialsRes
   ] = await Promise.all([
-    supabase
+    adminSupabase
       .from('workflow_history')
       .select('id, project_id, from_stage, to_stage, changed_by, comment, created_at')
       .eq('project_id', params.id)
@@ -174,7 +176,7 @@ async function ProjectContentWrapper({ project, profile, user, role, theme, para
       .select('id, project_id, user_id, role, assigned_at, assigned_by')
       .eq('project_id', params.id),
     getMilestonesAction(params.id),
-    supabase
+    adminSupabase
       .from('activity_logs')
       .select('id, project_id, user_id, action, details, created_at')
       .eq('project_id', params.id)
