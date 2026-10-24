@@ -148,21 +148,6 @@ export async function engineerReviewFinalDeliverableAction(
     const projectName = project?.name || projectId;
 
     if (isApproved) {
-      // Gate: Check if all assigned materials/equipment have been submitted to the company
-      const { data: unsubmittedMaterials } = await supabase
-        .from('material_requests')
-        .select('id, item_name, quantity')
-        .eq('project_id', projectId)
-        .in('status', ['assigned', 'requested']);
-
-      if (unsubmittedMaterials && unsubmittedMaterials.length > 0) {
-        const itemNames = unsubmittedMaterials.map((m: any) => `${m.quantity}x ${m.item_name}`).join(', ');
-        return {
-          success: false,
-          error: `Cannot approve final deliverable: All assigned project materials must be submitted to the company or reported missing/lost with responsible members. Pending items: [${itemNames}].`
-        };
-      }
-
       // Approve Flow
       const stageResponse = await updateProjectStageAction(projectId, 'completed', "Final Deliverable Approved by Engineer. Project Delivered.");
       if (!stageResponse.success) {

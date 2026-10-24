@@ -869,6 +869,22 @@ export async function reviewFieldSurveyAction(
       return { success: false, error: "Only Engineers or Admins can review field surveys." };
 
     if (isApproved) {
+      // Gate: All assigned materials and equipment must be submitted before survey can be validated
+      const supabase: any = await createClient();
+      const { data: unsubmittedMaterials } = await supabase
+        .from('material_requests')
+        .select('id, item_name, quantity')
+        .eq('project_id', projectId)
+        .in('status', ['assigned', 'requested']);
+
+      if (unsubmittedMaterials && unsubmittedMaterials.length > 0) {
+        const itemNames = unsubmittedMaterials.map((m: any) => `${m.quantity}x ${m.item_name}`).join(', ');
+        return {
+          success: false,
+          error: `Cannot validate field survey: All assigned materials and equipment must be submitted to the company or reported missing/lost with responsible member (${itemNames}).`
+        };
+      }
+
       const stRes = await updateProjectStageAction(projectId, "final_review", `Field Survey Accepted. Ready for Final Deliverables. Notes: ${reviewNotes}`);
       if (!stRes.success) return stRes;
       await logActivity(projectId, auth.userId, "FIELD_SURVEY_APPROVED", { reviewNotes });

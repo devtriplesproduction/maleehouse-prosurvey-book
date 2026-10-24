@@ -608,6 +608,14 @@ export function OperationsFileUploadPanel({
 
   const handleReviewSurveyInline = (isApproved: boolean) => {
     if (isApproved) {
+      if (pendingProjectMaterials.length > 0) {
+        toast({
+          title: "Materials Return / Accounting Required",
+          description: `All assigned materials (${pendingProjectMaterials.length} pending) must be submitted to the company or reported missing with responsible members before accepting the survey.`,
+          variant: "error"
+        });
+        return;
+      }
       setLoadingAction('approve_survey');
       startTransition(async () => {
         const res = await reviewFieldSurveyAction(projectId, true, "");
@@ -634,14 +642,6 @@ export function OperationsFileUploadPanel({
 
   const handleReviewFinalDeliverableInline = (isApproved: boolean) => {
     if (isApproved) {
-      if (pendingProjectMaterials.length > 0) {
-        toast({
-          title: "Materials Return / Accounting Required",
-          description: `All assigned materials (${pendingProjectMaterials.length} pending) must be submitted to the company or reported missing with responsible members before approving the final deliverable.`,
-          variant: "error"
-        });
-        return;
-      }
       if (!confirm("Are you sure you want to approve this final deliverable and mark the project as delivered?")) return;
       setLoadingAction('approve_final');
       startTransition(async () => {
@@ -1133,6 +1133,70 @@ export function OperationsFileUploadPanel({
             </div>
           </div>
 
+          {/* Materials & Equipment Return Status for Survey Validation */}
+          {(isEngineer || isAdmin) && projectStatus === "data_sync" && projectMaterials.length > 0 && (
+            <div className="mt-4">
+              {pendingProjectMaterials.length > 0 ? (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <div>
+                        <p className="font-bold text-amber-900 dark:text-amber-200">
+                          Materials Submission / Accounting Required
+                        </p>
+                        <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                          {pendingProjectMaterials.length} material(s) assigned to this project must be returned or accounted for (reported missing with a responsible member) before survey validation.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => setIsSubmitMaterialsModalOpen(true)}
+                      className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition shadow-sm disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      <Package className="w-3.5 h-3.5" />
+                      <span>Submit / Report Missing</span>
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {pendingProjectMaterials.map((m: any) => (
+                      <span key={m.id} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-200/50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200">
+                        {m.quantity}x {m.item} {m.assigned_to_name ? `(${m.assigned_to_name})` : ''}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span className="font-bold text-emerald-900 dark:text-emerald-200">
+                        All {projectMaterials.length} Assigned Material(s) Accounted For ({submittedProjectMaterials.length} Submitted{lostProjectMaterials.length > 0 ? `, ${lostProjectMaterials.length} Reported Lost` : ''})
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 shrink-0">
+                      Verified for Survey Validation
+                    </span>
+                  </div>
+                  {lostProjectMaterials.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1 border-t border-emerald-500/15">
+                      {lostProjectMaterials.map((m: any) => (
+                        <span key={m.id} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/20 flex items-center gap-1">
+                          <PackageX className="w-3 h-3 text-rose-500" />
+                          <span>{m.quantity}x {m.item}</span>
+                          <span className="opacity-80">&bull; Resp: {m.responsible_person_name || 'Staff'}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Survey Validation Buttons */}
           {(isEngineer || isAdmin) && projectStatus === "data_sync" && surveyDocs.length > 0 && (
             <div className="flex gap-3 mt-4">
@@ -1243,69 +1307,7 @@ export function OperationsFileUploadPanel({
             )
           )}
 
-          {/* Materials & Equipment Return Status for Final Review */}
-          {(isEngineer || isAdmin) && projectStatus === "final_review" && projectMaterials.length > 0 && (
-            <div className="mt-4">
-              {pendingProjectMaterials.length > 0 ? (
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-2.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <div>
-                        <p className="font-bold text-amber-900 dark:text-amber-200">
-                          Materials Submission / Accounting Required
-                        </p>
-                        <p className="text-[11px] text-amber-700 dark:text-amber-300">
-                          {pendingProjectMaterials.length} material(s) assigned to this project must be returned or accounted for (reported missing with a responsible member) before deliverable approval.
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={isPending}
-                      onClick={() => setIsSubmitMaterialsModalOpen(true)}
-                      className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition shadow-sm disabled:opacity-50 flex items-center gap-1.5"
-                    >
-                      <Package className="w-3.5 h-3.5" />
-                      <span>Submit / Report Missing</span>
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 pt-0.5">
-                    {pendingProjectMaterials.map((m: any) => (
-                      <span key={m.id} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-200/50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200">
-                        {m.quantity}x {m.item} {m.assigned_to_name ? `(${m.assigned_to_name})` : ''}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                      <span className="font-bold text-emerald-900 dark:text-emerald-200">
-                        All {projectMaterials.length} Assigned Material(s) Accounted For ({submittedProjectMaterials.length} Submitted{lostProjectMaterials.length > 0 ? `, ${lostProjectMaterials.length} Reported Lost` : ''})
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 shrink-0">
-                      Verified for Delivery
-                    </span>
-                  </div>
-                  {lostProjectMaterials.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-1 border-t border-emerald-500/15">
-                      {lostProjectMaterials.map((m: any) => (
-                        <span key={m.id} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/20 flex items-center gap-1">
-                          <PackageX className="w-3 h-3 text-rose-500" />
-                          <span>{m.quantity}x {m.item}</span>
-                          <span className="opacity-80">&bull; Resp: {m.responsible_person_name || 'Staff'}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+
 
           {/* Submit Final Deliverable Button */}
           {(isEngineer || isAdmin) && !isProjectClosed && (

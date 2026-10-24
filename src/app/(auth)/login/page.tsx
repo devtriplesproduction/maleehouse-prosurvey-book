@@ -1,9 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { AuthLayout } from "@/components/auth/AuthLayout";
 import { LoginForm } from "@/components/auth/LoginForm";
 import { AuthIllustration } from "@/components/auth/AuthIllustration";
-import { Building2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function LoginPage() {
@@ -14,13 +14,14 @@ export default function LoginPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       >
-        <header className="flex items-center gap-4 mb-12 lg:mb-16">
-          <div className="flex h-12 w-12 items-center justify-center rounded-[14px] border border-white bg-white text-indigo-600 shadow-[0_8px_30px_rgba(15,23,42,0.06)]">
-            <Building2 className="h-6 w-6" strokeWidth={2.2} />
-          </div>
-          <span className="text-xl font-bold tracking-tight text-slate-900">
-            Malee House
-          </span>
+        <header className="mb-6">
+          <Link href="/" className="inline-flex items-center">
+            <img
+              src="/maleehouse Logo.png"
+              alt="Malee House"
+              className="h-10 w-auto object-contain dark:brightness-0 dark:invert"
+            />
+          </Link>
         </header>
 
         <div className="flex flex-col w-full">

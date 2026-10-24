@@ -98,13 +98,13 @@ const STATE_OPTIONS = [
 import { WORKFLOW_STAGES } from '@/components/modules/ProjectWorkflowTab';
 
 export const WORKFLOW_STAGE_OPTIONS = [
-  { 
-    value: 'none', 
+  {
+    value: 'none',
     label: '-- No linked stage --',
-    step: '—', 
-    title: '-- No linked stage --', 
-    desc: 'Unrestricted (does not block progress)', 
-    role: null 
+    step: '—',
+    title: '-- No linked stage --',
+    desc: 'Unrestricted (does not block progress)',
+    role: null
   },
   ...WORKFLOW_STAGES.map((stg) => ({
     value: stg.statusKey,
@@ -117,11 +117,16 @@ export const WORKFLOW_STAGE_OPTIONS = [
 ];
 
 const SERVICES_BY_CATEGORY: Record<string, string[]> = {
+  "Accuracy & Survey Work": [
+    "River Survey",
+    "Nala",
+    "MI Tank Survey",
+    "Geo Tagging Survey",
+    "Mines Survey"
+  ],
   "Plot measurement": [
-    "Farm measurement",
     "Forest measurement",
-    "Farm contour",
-    "Farm dividation"
+
   ],
   "Bridge survey": [
     "New Bridge",
@@ -160,10 +165,6 @@ const SERVICES_BY_CATEGORY: Record<string, string[]> = {
     "MDR,ODR,VR",
     "Road Survey New alignment",
     "Hamp road survey"
-  ],
-  "GIS survey": [
-    "Drone Photogrammetric Survey",
-    "LIDAR Survey"
   ]
 };
 
@@ -963,7 +964,7 @@ export function ProjectCreationWizard() {
 
                           {/* Commercial Amount & Payment Setup Card */}
                           <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white/90 dark:bg-slate-900/50 backdrop-blur-xl p-6 sm:p-7 shadow-sm space-y-6">
-                            
+
                             {/* Ambient background glow decoration */}
                             <div className="pointer-events-none absolute -top-24 -right-24 w-60 h-60 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 rounded-full blur-3xl" />
                             <div className="pointer-events-none absolute -bottom-24 -left-24 w-60 h-60 bg-gradient-to-tr from-emerald-500/10 to-teal-500/10 rounded-full blur-3xl" />
@@ -1166,7 +1167,7 @@ export function ProjectCreationWizard() {
                             <div className="relative z-10 pt-2 border-t border-slate-200/60 dark:border-white/5">
                               {baseAmount > 0 ? (
                                 <div className="rounded-2xl border border-slate-200/90 dark:border-white/10 bg-gradient-to-b from-white to-slate-50/70 dark:from-slate-900/60 dark:to-slate-950/80 shadow-md shadow-slate-900/5 overflow-hidden transition-all">
-                                  
+
                                   {/* Summary Header */}
                                   <div className="px-5 py-3 bg-slate-100/70 dark:bg-white/[0.02] border-b border-slate-200/60 dark:border-white/5 flex items-center justify-between">
                                     <div className="flex items-center gap-2">

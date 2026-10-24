@@ -365,6 +365,24 @@ async function validateStageTransition(
         break;
       }
 
+      case "final_review": {
+        // Gate: All assigned materials and equipment must be submitted to the company before advancing past survey validation
+        const { data: pendingMaterials } = await supabase
+          .from("material_requests")
+          .select("id, item_name, quantity")
+          .eq("project_id", projectId)
+          .in("status", ["assigned", "requested"]);
+
+        if (pendingMaterials && pendingMaterials.length > 0) {
+          const names = pendingMaterials.map((m: any) => `${m.quantity}x ${m.item_name}`).join(", ");
+          return {
+            success: false,
+            error: `Cannot validate survey: All assigned materials and equipment must be submitted to the company or reported missing/lost with responsible member (${names}).`
+          };
+        }
+        break;
+      }
+
       case "completed": {
         // Gate 1: Final deliverable file required
         const { data: files } = await supabase.from("files").select("id").eq("project_id", projectId).eq("category", "final_file").limit(1);
@@ -401,21 +419,6 @@ async function validateStageTransition(
           return {
             success: false,
             error: "Cannot complete project: Project must pass through Survey Validation / Final Review first."
-          };
-        }
-
-        // Gate 5: All assigned materials and equipment must be submitted to the company
-        const { data: pendingMaterials } = await supabase
-          .from("material_requests")
-          .select("id, item_name, quantity")
-          .eq("project_id", projectId)
-          .in("status", ["assigned", "requested"]);
-
-        if (pendingMaterials && pendingMaterials.length > 0) {
-          const names = pendingMaterials.map((m: any) => `${m.quantity}x ${m.item_name}`).join(", ");
-          return {
-            success: false,
-            error: `Cannot complete project: All assigned materials must be submitted to the company or reported missing/lost with responsible member (${names}).`
           };
         }
         break;
