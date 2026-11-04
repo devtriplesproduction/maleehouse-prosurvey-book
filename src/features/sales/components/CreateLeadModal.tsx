@@ -259,6 +259,8 @@ export function CreateLeadModal() {
                                 { value: "Commercial", label: "Commercial" },
                                 { value: "Industrial", label: "Industrial" },
                                 { value: "Public Infrastructure", label: "Public Infrastructure" },
+                                { value: "Government", label: "Government" },
+                                { value: "Semi-Government", label: "Semi-Government" },
                               ]}
                             />
                           </div>

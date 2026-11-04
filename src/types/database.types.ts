@@ -17,7 +17,7 @@ export interface Database {
       project_priority: 'low' | 'medium' | 'high' | 'urgent'
       project_status: 'lead' | 'requirement_gathering' | 'quotation_requested' | 'quotation_sent' | 'payment_pending' | 'payment_done' | 'ready_for_dispatch' | 'project_created' | 'data_collection' | 'prototype' | 'review' | 'field_assigned' | 'field_work' | 'data_sync' | 'final_review' | 'completed' | 'archived'
       quotation_status: 'Draft' | 'Pending' | 'Sent' | 'Viewed' | 'Approved' | 'Rejected' | 'Revision Requested' | 'Expired' | 'Superseded'
-      site_type: 'residential' | 'commercial' | 'industrial' | 'infrastructure' | 'agricultural' | 'other'
+      site_type: 'residential' | 'commercial' | 'industrial' | 'infrastructure' | 'agricultural' | 'government' | 'semi_government' | 'other'
       task_status: 'pending' | 'in_progress' | 'submitted' | 'completed' | 'overdue' | 'cancelled'
       user_role: 'admin' | 'sales' | 'accountant' | 'engineer' | 'field' | 'hr'
       visit_status: 'scheduled' | 'completed' | 'cancelled' | 'paid'

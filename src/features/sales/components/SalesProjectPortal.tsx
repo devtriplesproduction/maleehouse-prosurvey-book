@@ -478,7 +478,7 @@ export function SalesProjectPortal({ project, comments = [], files = [] }: Sales
               <div className="border-t border-slate-100 dark:border-white/5 pt-4">
                 <p className="text-[10px] font-medium uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-1.5 leading-none">Site Typology</p>
                 <span className="inline-block px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider bg-indigo-500/10 text-indigo-500 rounded-lg border border-indigo-500/20">
-                  {localProject.site_type || 'Residential'}
+                  {localProject.site_type ? localProject.site_type.replace(/_/g, '-') : 'Residential'}
                 </span>
               </div>
 

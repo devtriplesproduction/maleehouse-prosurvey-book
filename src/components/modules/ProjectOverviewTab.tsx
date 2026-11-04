@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   User, 
@@ -11,7 +11,9 @@ import {
   Loader2,
   Phone,
   Mail,
-  Printer
+  Printer,
+  Building2,
+  Clock
 } from 'lucide-react';
 import { updateProjectAction } from '@/actions/project.actions';
 import { assignUserToProjectAction, removeUserFromProjectAction } from '@/actions/assignment.actions';
@@ -23,6 +25,32 @@ import { ProjectTeamSection } from './ProjectTeamSection';
 import { ProjectMaterialsSection } from './ProjectMaterialsSection';
 import { OperationsControlCenter } from './OperationsControlCenter';
 
+
+const SITE_TYPE_LABELS: Record<string, string> = {
+  residential: 'Residential',
+  commercial: 'Commercial',
+  industrial: 'Industrial',
+  infrastructure: 'Infrastructure',
+  government: 'Government',
+  semi_government: 'Semi-Government',
+  'semi-government': 'Semi-Government',
+  agricultural: 'Agricultural',
+  other: 'Other',
+};
+
+function formatDisplayDate(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  const datePart = dateStr.split('T')[0];
+  const parts = datePart.split('-');
+  if (parts.length === 3) {
+    const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+  }
+  const fallback = new Date(dateStr);
+  return isNaN(fallback.getTime()) ? dateStr : fallback.toLocaleDateString();
+}
 
 interface ProjectOverviewTabProps {
   project: any;
@@ -73,10 +101,23 @@ export default function ProjectOverviewTab({
   const [clientAddress, setClientAddress] = useState(project.client_address || '');
   const [contactPhone, setContactPhone] = useState(phoneVal);
   const [contactEmail, setContactEmail] = useState(emailVal);
-  const [siteType, setSiteType] = useState(project.site_type || 'residential');
+  const normalizedSiteType = project.site_type === 'semi-government' ? 'semi_government' : (project.site_type || 'residential');
+  const [siteType, setSiteType] = useState(normalizedSiteType);
   const [siteCoordinates, setSiteCoordinates] = useState(project.site_coordinates || '');
   const [surveyRequirements, setSurveyRequirements] = useState(project.survey_requirements || '');
-  const [targetCompletionDate, setTargetCompletionDate] = useState(project.target_completion_date || '');
+  const [targetCompletionDate, setTargetCompletionDate] = useState(project.target_completion_date ? project.target_completion_date.split('T')[0] : '');
+
+  useEffect(() => {
+    setName(project.name || '');
+    setClientName(project.client_name || '');
+    setClientAddress(project.client_address || '');
+    setContactPhone(phoneVal);
+    setContactEmail(emailVal);
+    setSiteType(project.site_type === 'semi-government' ? 'semi_government' : (project.site_type || 'residential'));
+    setSiteCoordinates(project.site_coordinates || '');
+    setSurveyRequirements(project.survey_requirements || '');
+    setTargetCompletionDate(project.target_completion_date ? project.target_completion_date.split('T')[0] : '');
+  }, [project, phoneVal, emailVal]);
 
   // Role permissions checks
   const isAdmin = userRole === 'admin';
@@ -243,6 +284,8 @@ export default function ProjectOverviewTab({
                       <option value="commercial">Commercial</option>
                       <option value="industrial">Industrial</option>
                       <option value="infrastructure">Infrastructure</option>
+                      <option value="government">Government</option>
+                      <option value="semi_government">Semi-Government</option>
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -268,7 +311,7 @@ export default function ProjectOverviewTab({
             <div className="flex items-center justify-between group">
               <div className="flex items-start gap-4">
                 <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-500 shrink-0">
-                  <User className="w-4 h-4" />
+                  <Briefcase className="w-4 h-4" />
                 </div>
                 <div>
                   <p className="text-xs font-medium text-slate-400 mb-0.5">Project Name</p>
@@ -276,6 +319,18 @@ export default function ProjectOverviewTab({
                 </div>
               </div>
             </div>
+
+            {project.client_name && (
+              <div className="flex items-start gap-4">
+                <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-500 shrink-0">
+                  <User className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400 mb-0.5">Client Name</p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">{project.client_name}</p>
+                </div>
+              </div>
+            )}
 
             {emailVal && (
               <div className="flex items-start gap-4">
@@ -309,6 +364,34 @@ export default function ProjectOverviewTab({
                 <div>
                   <p className="text-xs font-medium text-slate-400 mb-0.5">Address</p>
                   <p className="text-sm font-semibold text-slate-900 dark:text-white">{project.client_address}</p>
+                </div>
+              </div>
+            )}
+
+            {project.site_type && (
+              <div className="flex items-start gap-4">
+                <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-500 shrink-0">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400 mb-0.5">Site Type</p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    {SITE_TYPE_LABELS[project.site_type?.toLowerCase()] || project.site_type}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {project.target_completion_date && (
+              <div className="flex items-start gap-4">
+                <div className="w-9 h-9 rounded-full bg-slate-100 dark:bg-white/5 flex items-center justify-center text-slate-500 shrink-0">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-slate-400 mb-0.5">Target Completion Date</p>
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    {formatDisplayDate(project.target_completion_date)}
+                  </p>
                 </div>
               </div>
             )}

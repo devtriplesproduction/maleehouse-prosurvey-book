@@ -51,7 +51,7 @@ export const baseProjectSchema = z.object({
   client_address: z.string().min(10, { message: 'Full address is required.' }),
   state_code: z.string().min(2).max(2, { message: 'State code must be exactly 2 letters (e.g., TX, NY).' }).toUpperCase(),
   site_coordinates: z.string().optional(),
-  site_type: z.enum(['residential', 'commercial', 'industrial', 'infrastructure', 'other']),
+  site_type: z.enum(['residential', 'commercial', 'industrial', 'infrastructure', 'agricultural', 'government', 'semi_government', 'semi-government', 'other']),
   survey_requirements: z.string().min(10, { message: 'Please provide more details on requirements.' }),
   services: z.array(z.string()).min(1, { message: 'Select at least one service.' }),
   amount: z.coerce.number().min(0, { message: 'Project amount must be 0 or greater.' }).default(0),

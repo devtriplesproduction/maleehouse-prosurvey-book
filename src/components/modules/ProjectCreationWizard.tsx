@@ -800,6 +800,8 @@ export function ProjectCreationWizard() {
                                     <SelectItem value="commercial">Commercial Development Site</SelectItem>
                                     <SelectItem value="industrial">Industrial Complex Site</SelectItem>
                                     <SelectItem value="infrastructure">Infrastructure Route / Utility Site</SelectItem>
+                                    <SelectItem value="government">Government Site / Project</SelectItem>
+                                    <SelectItem value="semi_government">Semi-Government Site / Project</SelectItem>
                                     <SelectItem value="other">Other / Custom Survey Land</SelectItem>
                                   </Select>
                                 )}
@@ -1628,7 +1630,7 @@ export function ProjectCreationWizard() {
 
                               <div className="space-y-1 min-w-0">
                                 <p className="text-xs font-medium text-slate-400 dark:text-slate-550 uppercase tracking-widest">Site Type</p>
-                                <p className="text-sm font-medium text-slate-800 dark:text-white capitalize">{watch('site_type')}</p>
+                                <p className="text-sm font-medium text-slate-800 dark:text-white capitalize">{watch('site_type')?.replace(/_/g, ' ')}</p>
                               </div>
 
                               <div className="space-y-1 min-w-0">

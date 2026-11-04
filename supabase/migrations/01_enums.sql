@@ -229,6 +229,8 @@ DO $$ BEGIN
     'industrial',
     'infrastructure',
     'agricultural',
+    'government',
+    'semi_government',
     'other'
   );
 EXCEPTION WHEN duplicate_object THEN NULL;
