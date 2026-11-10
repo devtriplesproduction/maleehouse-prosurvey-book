@@ -42,7 +42,7 @@ export async function uploadFileToServerAction(
     const { userId, role, error: authError } = await requireAuthContext();
     if (authError || !userId) return { success: false, error: "Unauthorized. Please log in to upload files." };
     
-    if (!(await checkActionRateLimit(userId, 'uploadFileToServerAction', 15, 60 * 1000))) {
+    if (!(await checkActionRateLimit(userId, 'uploadFileToServerAction', 100, 60 * 1000))) {
       return { success: false, error: 'Rate limit exceeded for this action. Please try again later.' };
     }
 

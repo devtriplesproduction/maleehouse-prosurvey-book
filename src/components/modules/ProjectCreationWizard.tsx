@@ -35,6 +35,7 @@ import {
   Calculator,
   X,
   Check,
+  Pencil,
 } from 'lucide-react';
 import { PremiumDatePicker } from '@/components/ui/PremiumDatePicker';
 import { cn, numberToWords } from '@/lib/utils';
@@ -45,6 +46,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useUser } from '@/hooks/useUser';
 
 type ProjectFormValues = CreateProjectInput;
+
+interface CustomServiceItem {
+  id: string;
+  category: string;
+  name: string;
+  selected: boolean;
+}
 
 const STEPS = [
   { id: 1, title: 'Customer & Site', icon: Building2 },
@@ -165,7 +173,8 @@ const SERVICES_BY_CATEGORY: Record<string, string[]> = {
     "MDR,ODR,VR",
     "Road Survey New alignment",
     "Hamp road survey"
-  ]
+  ],
+  "Other": []
 };
 
 const GST_RATE_OPTIONS = [
@@ -260,6 +269,112 @@ export function ProjectCreationWizard() {
   const { handleSubmit, formState: { errors }, watch, setValue, trigger } = methods;
 
   const selectedServices = watch('services') || [];
+  const [customServices, setCustomServices] = useState<CustomServiceItem[]>([]);
+  const [isAddingOther, setIsAddingOther] = useState(false);
+  const [otherText, setOtherText] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+
+  const syncFormServices = (
+    updatedCustomList: CustomServiceItem[],
+    currentServices: string[]
+  ) => {
+    const allPresets = new Set(Object.values(SERVICES_BY_CATEGORY).flat());
+    const selectedPresets = currentServices.filter((s) => allPresets.has(s));
+    const selectedCustoms = updatedCustomList
+      .filter((item) => item.selected && item.name.trim().length > 0)
+      .map((item) => item.name.trim());
+
+    const next = Array.from(new Set([...selectedPresets, ...selectedCustoms]));
+    setValue('services', next, { shouldValidate: true });
+  };
+
+  const handleCreateCustomPoint = (cat: string, textToCreate?: string) => {
+    const text = (textToCreate !== undefined ? textToCreate : otherText).trim();
+    if (!text) {
+      toast.error('Please enter a name for the custom option.');
+      return;
+    }
+
+    const allPresets = SERVICES_BY_CATEGORY[cat] || [];
+    if (allPresets.some((p) => p.toLowerCase() === text.toLowerCase())) {
+      toast.error(`"${text}" already exists in the preset list.`);
+      return;
+    }
+
+    const existingCustom = customServices.find(
+      (cs) => cs.category === cat && cs.name.toLowerCase() === text.toLowerCase()
+    );
+    if (existingCustom) {
+      if (!existingCustom.selected) {
+        handleToggleCustomItem(existingCustom.id);
+        setOtherText('');
+        setIsAddingOther(false);
+        return;
+      }
+      toast.error(`"${text}" has already been added.`);
+      return;
+    }
+
+    const newItem: CustomServiceItem = {
+      id: `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      category: cat,
+      name: text,
+      selected: true,
+    };
+
+    const updated = [...customServices, newItem];
+    setCustomServices(updated);
+    setOtherText('');
+    setIsAddingOther(false);
+    syncFormServices(updated, methods.getValues('services') || []);
+  };
+
+  const handleToggleCustomItem = (id: string) => {
+    const updated = customServices.map((item) =>
+      item.id === id ? { ...item, selected: !item.selected } : item
+    );
+    setCustomServices(updated);
+    syncFormServices(updated, methods.getValues('services') || []);
+  };
+
+  const handleDeleteCustomItem = (id: string) => {
+    const itemToDelete = customServices.find((item) => item.id === id);
+    const updated = customServices.filter((item) => item.id !== id);
+    setCustomServices(updated);
+
+    if (itemToDelete) {
+      const current = methods.getValues('services') || [];
+      const next = current.filter((s) => s !== itemToDelete.name);
+      setValue('services', next, { shouldValidate: true });
+    }
+  };
+
+  const handleStartEdit = (item: CustomServiceItem) => {
+    setEditingId(item.id);
+    setEditText(item.name);
+  };
+
+  const handleSaveEdit = (id: string) => {
+    const trimmed = editText.trim();
+    if (!trimmed) {
+      toast.error('Option name cannot be empty.');
+      return;
+    }
+    const itemToEdit = customServices.find((item) => item.id === id);
+    const oldName = itemToEdit?.name;
+
+    const updated = customServices.map((item) =>
+      item.id === id ? { ...item, name: trimmed } : item
+    );
+    setCustomServices(updated);
+    setEditingId(null);
+    setEditText('');
+
+    const current = methods.getValues('services') || [];
+    const next = current.map((s) => (s === oldName ? trimmed : s));
+    setValue('services', Array.from(new Set(next)), { shouldValidate: true });
+  };
 
   const baseAmount = Number(watch('amount') || 0);
   const gstType = watch('gst_type') || 'no_gst';
@@ -439,6 +554,9 @@ export function ProjectCreationWizard() {
     if (step === 1) {
       fieldsToValidate = ['name', 'client_name', 'phone', 'email', 'client_address', 'state_code', 'site_type', 'survey_requirements'];
     } else if (step === 2) {
+      if (isAddingOther && otherText.trim()) {
+        handleCreateCustomPoint(activeCategory, otherText.trim());
+      }
       fieldsToValidate = ['services'];
     } else if (step === 3) {
       fieldsToValidate = ['amount', 'gst_type'];
@@ -482,6 +600,11 @@ export function ProjectCreationWizard() {
   const handleBack = () => setStep((s) => s - 1);
 
   const resetFormState = () => {
+    setCustomServices([]);
+    setIsAddingOther(false);
+    setOtherText('');
+    setEditingId(null);
+    setEditText('');
     methods.reset({
       name: '',
       client_name: '',
@@ -877,12 +1000,23 @@ export function ProjectCreationWizard() {
                             <div className="w-56 overflow-y-auto space-y-1.5 pr-2 border-r border-slate-200 dark:border-white/5 custom-scrollbar shrink-0">
                               {Object.keys(SERVICES_BY_CATEGORY).map((cat) => {
                                 const isCurrent = activeCategory === cat;
-                                const countInCat = SERVICES_BY_CATEGORY[cat].filter((s: any) => selectedServices.includes(s)).length;
+                                const countInCat =
+                                  (SERVICES_BY_CATEGORY[cat] || []).filter((s: any) => selectedServices.includes(s)).length +
+                                  customServices.filter((cs) => cs.category === cat && cs.selected).length;
                                 return (
                                   <button
                                     key={cat}
                                     type="button"
-                                    onClick={() => setActiveCategory(cat)}
+                                    onClick={() => {
+                                      if (isAddingOther && otherText.trim()) {
+                                        handleCreateCustomPoint(activeCategory, otherText.trim());
+                                      } else {
+                                        setIsAddingOther(false);
+                                        setOtherText('');
+                                      }
+                                      setEditingId(null);
+                                      setActiveCategory(cat);
+                                    }}
                                     className={cn(
                                       "w-full text-left px-4 py-3.5 rounded-xl text-xs font-medium tracking-tight transition-all flex items-center justify-between group",
                                       isCurrent
@@ -911,7 +1045,7 @@ export function ProjectCreationWizard() {
                               </h4>
 
                               <div className="grid grid-cols-1 gap-3">
-                                {SERVICES_BY_CATEGORY[activeCategory].map((subCat) => {
+                                {(SERVICES_BY_CATEGORY[activeCategory] || []).map((subCat) => {
                                   const isSelected = selectedServices.includes(subCat);
                                   return (
                                     <button
@@ -952,6 +1086,219 @@ export function ProjectCreationWizard() {
                                     </button>
                                   );
                                 })}
+
+                                {/* Created Custom Points for the active category */}
+                                {customServices
+                                  .filter((cs) => cs.category === activeCategory)
+                                  .map((item) => {
+                                    const isEditing = editingId === item.id;
+                                    const isSelected = item.selected;
+
+                                    if (isEditing) {
+                                      return (
+                                        <div
+                                          key={item.id}
+                                          className="w-full p-3 rounded-xl border border-indigo-400 dark:border-indigo-600 bg-white dark:bg-slate-900 shadow-sm flex items-center gap-2"
+                                        >
+                                          <input
+                                            type="text"
+                                            value={editText}
+                                            onChange={(e) => setEditText(e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleSaveEdit(item.id);
+                                              } else if (e.key === 'Escape') {
+                                                setEditingId(null);
+                                                setEditText('');
+                                              }
+                                            }}
+                                            autoFocus
+                                            className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/5 text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSaveEdit(item.id)}
+                                            className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors"
+                                          >
+                                            Save
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingId(null);
+                                              setEditText('');
+                                            }}
+                                            className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/5 text-xs transition-colors"
+                                          >
+                                            <X className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      );
+                                    }
+
+                                    return (
+                                      <div
+                                        key={item.id}
+                                        className={cn(
+                                          "w-full flex items-center justify-between p-4 rounded-xl border text-xs font-medium text-left transition-all duration-200 group relative",
+                                          isSelected
+                                            ? cn(c.bg, "border-transparent text-white shadow-md", c.shadowMd)
+                                            : cn("bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-350", "hover:border-indigo-500/40")
+                                        )}
+                                      >
+                                        {/* Clickable area to toggle selection */}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleToggleCustomItem(item.id)}
+                                          className="flex-1 flex items-center gap-3 min-w-0 text-left"
+                                        >
+                                          <div className={cn(
+                                            "w-7 h-7 rounded-lg flex items-center justify-center border transition-all shrink-0",
+                                            isSelected ? "bg-white/20 border-white/30" : "bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10"
+                                          )}>
+                                            <Sparkles className="w-3.5 h-3.5" />
+                                          </div>
+                                          <div className="flex items-center gap-2 truncate">
+                                            <span className="tracking-tight leading-snug font-medium truncate">{item.name}</span>
+                                            <span className={cn(
+                                              "text-[10px] px-2 py-0.5 rounded-full shrink-0 font-normal",
+                                              isSelected
+                                                ? "bg-white/20 text-white"
+                                                : "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400"
+                                            )}>
+                                              Custom
+                                            </span>
+                                          </div>
+                                        </button>
+
+                                        {/* Action buttons: Edit, Delete, Toggle Checkbox */}
+                                        <div className="flex items-center gap-2 shrink-0 ml-2">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleStartEdit(item);
+                                            }}
+                                            className={cn(
+                                              "p-1.5 rounded-lg transition-colors opacity-70 hover:opacity-100",
+                                              isSelected
+                                                ? "hover:bg-white/20 text-white"
+                                                : "hover:bg-slate-100 dark:hover:bg-white/10 text-slate-400"
+                                            )}
+                                            title="Edit name"
+                                          >
+                                            <Pencil className="w-3.5 h-3.5" />
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDeleteCustomItem(item.id);
+                                            }}
+                                            className={cn(
+                                              "p-1.5 rounded-lg transition-colors opacity-70 hover:opacity-100",
+                                              isSelected
+                                                ? "hover:bg-white/20 text-white hover:text-rose-200"
+                                                : "hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 hover:text-rose-500"
+                                            )}
+                                            title="Delete option"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => handleToggleCustomItem(item.id)}
+                                            className={cn(
+                                              "w-5 h-5 rounded-full border flex items-center justify-center transition-all shrink-0",
+                                              isSelected
+                                                ? "bg-white border-white text-indigo-600 scale-105"
+                                                : "border-slate-300 dark:border-white/20 group-hover:scale-105"
+                                            )}
+                                            title={isSelected ? "Deselect" : "Select"}
+                                          >
+                                            {isSelected && <CheckCircle2 className={cn("w-3.5 h-3.5 fill-white", c.text)} />}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+
+                                {/* 3. The "Other" creation card */}
+                                {isAddingOther ? (
+                                  <div className="w-full p-4 rounded-xl border border-indigo-400/60 dark:border-indigo-600/60 bg-indigo-50/40 dark:bg-indigo-950/30 shadow-sm space-y-3">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <Sparkles className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                          Add Custom Option to {activeCategory}
+                                        </span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setIsAddingOther(false);
+                                          setOtherText('');
+                                        }}
+                                        className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+
+                                    <div className="flex items-center gap-2">
+                                      <input
+                                        type="text"
+                                        value={otherText}
+                                        onChange={(e) => setOtherText(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            handleCreateCustomPoint(activeCategory);
+                                          } else if (e.key === 'Escape') {
+                                            setIsAddingOther(false);
+                                            setOtherText('');
+                                          }
+                                        }}
+                                        placeholder="Type custom point name and press Enter..."
+                                        autoFocus
+                                        className="flex-1 px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder:text-slate-400/70 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => handleCreateCustomPoint(activeCategory)}
+                                        className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 active:scale-95 transition-all shadow-sm flex items-center gap-1.5 shrink-0"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>Add</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <button
+                                    key="btn-other-trigger"
+                                    type="button"
+                                    onClick={() => setIsAddingOther(true)}
+                                    className={cn(
+                                      "w-full flex items-center justify-between p-4 rounded-xl border text-xs font-medium text-left transition-all duration-200 group relative",
+                                      "bg-white dark:bg-white/5 border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-350 hover:border-indigo-500/40 border-dashed"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-7 h-7 rounded-lg flex items-center justify-center border transition-all shrink-0 bg-slate-50 dark:bg-white/5 border-slate-200 dark:border-white/10 group-hover:border-indigo-400 group-hover:text-indigo-600">
+                                        <Plus className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="tracking-tight leading-snug font-medium">Other</span>
+                                        <span className="text-[10px] text-slate-400 font-normal">(Click to enter custom text)</span>
+                                      </div>
+                                    </div>
+
+                                    <div className="w-5 h-5 rounded-full border border-slate-300 dark:border-white/20 flex items-center justify-center transition-all shrink-0 group-hover:scale-105" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>

@@ -282,51 +282,72 @@ export function OperationsFileUploadPanel({
   };
 
   const handleUploadControlPoint = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const filesToUpload = Array.from(event.target.files || []);
+    if (filesToUpload.length === 0) return;
 
     await ensureClaimed();
 
     setIsUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(5);
+
+    const newlyRegistered: any[] = [];
+    let lastStage: string | undefined;
 
     try {
-      setUploadProgress(40);
-      const uploadResult = await uploadProjectFile(file, projectId);
-      setUploadProgress(70);
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+        const baseProgress = Math.round((i / filesToUpload.length) * 100);
+        setUploadProgress(Math.min(95, baseProgress + 10));
 
-      const registerResult = await registerFileAction({
-        project_id: projectId,
-        category: 'control_point_image',
-        file_name: uploadResult.fileName,
-        file_url: uploadResult.publicUrl,
-        mime_type: uploadResult.mimeType,
-        file_size: uploadResult.fileSize,
-        storage_bucket: 'project-assets',
-      });
+        const uploadResult = await uploadProjectFile(file, projectId);
+        const registerResult = await registerFileAction({
+          project_id: projectId,
+          category: 'control_point_image',
+          file_name: uploadResult.fileName,
+          file_url: uploadResult.publicUrl,
+          mime_type: uploadResult.mimeType,
+          file_size: uploadResult.fileSize,
+          storage_bucket: 'project-assets',
+        });
 
-      if (!registerResult.success) {
-        throw new Error(registerResult.error || 'Failed to register file in database');
+        if (!registerResult.success) {
+          throw new Error(registerResult.error || `Failed to register ${file.name}`);
+        }
+
+        if (registerResult.data) {
+          newlyRegistered.push(registerResult.data);
+          if (registerResult.data.updated_project_stage) {
+            lastStage = registerResult.data.updated_project_stage;
+          }
+        }
       }
 
       setUploadProgress(100);
       toast({
         title: 'Upload Successful',
-        description: `"${file.name}" uploaded successfully.`,
+        description: filesToUpload.length === 1
+          ? `"${filesToUpload[0].name}" uploaded successfully.`
+          : `${filesToUpload.length} control point images uploaded successfully.`,
         variant: 'success'
       });
 
       setIsUploading(false);
       setUploadProgress(0);
-      onUpdateFiles?.([registerResult.data, ...files]);
-      setSessionUploadedDocIds(prev => new Set(prev).add(registerResult.data?.id || uploadResult.fileName));
-      setSubmittedSections(prev => { const n = { ...prev }; delete n.survey; return n; });
+      if (newlyRegistered.length > 0) {
+        onUpdateFiles?.([...newlyRegistered, ...files]);
+        setSessionUploadedDocIds(prev => {
+          const next = new Set(prev);
+          newlyRegistered.forEach(r => next.add(r.id || r.file_name));
+          return next;
+        });
+        setSubmittedSections(prev => { const n = { ...prev }; delete n.survey; return n; });
+      }
 
-      if (registerResult.data?.updated_project_stage) {
-        onUpdateProject?.({ status: registerResult.data.updated_project_stage });
+      if (lastStage) {
+        onUpdateProject?.({ status: lastStage });
         toast({
           title: 'Workflow Rewound',
-          description: `New control point uploaded. Project moved back to ${registerResult.data.updated_project_stage} to resume work.`,
+          description: `New control point uploaded. Project moved back to ${lastStage} to resume work.`,
           variant: 'default'
         });
         router.refresh();
@@ -335,60 +356,86 @@ export function OperationsFileUploadPanel({
     } catch (err: any) {
       console.error(err);
       setIsUploading(false);
+      if (newlyRegistered.length > 0) {
+        onUpdateFiles?.([...newlyRegistered, ...files]);
+      }
       toast({
         title: 'Upload Failed',
         description: err.message || 'File upload failed.',
         variant: 'error'
       });
+    } finally {
+      event.target.value = '';
     }
   };
 
   const handleUploadClientDoc = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const filesToUpload = Array.from(event.target.files || []);
+    if (filesToUpload.length === 0) return;
 
     await ensureClaimed();
 
     setIsUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(5);
+
+    const newlyRegistered: any[] = [];
+    let lastStage: string | undefined;
 
     try {
-      setUploadProgress(40);
-      const uploadResult = await uploadProjectFile(file, projectId);
-      setUploadProgress(70);
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+        const baseProgress = Math.round((i / filesToUpload.length) * 100);
+        setUploadProgress(Math.min(95, baseProgress + 10));
 
-      const registerResult = await registerFileAction({
-        project_id: projectId,
-        category: 'requirements',
-        file_name: uploadResult.fileName,
-        file_url: uploadResult.publicUrl,
-        mime_type: uploadResult.mimeType,
-        file_size: uploadResult.fileSize,
-        storage_bucket: 'project-assets',
-      });
+        const uploadResult = await uploadProjectFile(file, projectId);
+        const registerResult = await registerFileAction({
+          project_id: projectId,
+          category: 'requirements',
+          file_name: uploadResult.fileName,
+          file_url: uploadResult.publicUrl,
+          mime_type: uploadResult.mimeType,
+          file_size: uploadResult.fileSize,
+          storage_bucket: 'project-assets',
+        });
 
-      if (!registerResult.success) {
-        throw new Error(registerResult.error || 'Failed to register file in database');
+        if (!registerResult.success) {
+          throw new Error(registerResult.error || `Failed to register ${file.name}`);
+        }
+
+        if (registerResult.data) {
+          newlyRegistered.push(registerResult.data);
+          if (registerResult.data.updated_project_stage) {
+            lastStage = registerResult.data.updated_project_stage;
+          }
+        }
       }
 
       setUploadProgress(100);
       toast({
         title: 'Upload Successful',
-        description: `"${file.name}" uploaded to Client Documents.`,
+        description: filesToUpload.length === 1
+          ? `"${filesToUpload[0].name}" uploaded to Client Documents.`
+          : `${filesToUpload.length} documents uploaded to Client Documents.`,
         variant: 'success'
       });
 
       setIsUploading(false);
       setUploadProgress(0);
-      onUpdateFiles?.([registerResult.data, ...files]);
-      setSessionUploadedDocIds(prev => new Set(prev).add(registerResult.data?.id || uploadResult.fileName));
-      setSubmittedSections(prev => { const n = { ...prev }; delete n.client; return n; });
+      if (newlyRegistered.length > 0) {
+        onUpdateFiles?.([...newlyRegistered, ...files]);
+        setSessionUploadedDocIds(prev => {
+          const next = new Set(prev);
+          newlyRegistered.forEach(r => next.add(r.id || r.file_name));
+          return next;
+        });
+        setSubmittedSections(prev => { const n = { ...prev }; delete n.client; return n; });
+      }
 
-      if (registerResult.data?.updated_project_stage) {
-        onUpdateProject?.({ status: registerResult.data.updated_project_stage });
+      if (lastStage) {
+        onUpdateProject?.({ status: lastStage });
         toast({
           title: 'Workflow Rewound',
-          description: `New client document uploaded. Project moved back to ${registerResult.data.updated_project_stage} to resume work.`,
+          description: `New client document uploaded. Project moved back to ${lastStage} to resume work.`,
           variant: 'default'
         });
         router.refresh();
@@ -397,11 +444,16 @@ export function OperationsFileUploadPanel({
     } catch (err: any) {
       console.error(err);
       setIsUploading(false);
+      if (newlyRegistered.length > 0) {
+        onUpdateFiles?.([...newlyRegistered, ...files]);
+      }
       toast({
         title: 'Upload Failed',
         description: err.message || 'File upload failed.',
         variant: 'error'
       });
+    } finally {
+      event.target.value = '';
     }
   };
 
@@ -481,51 +533,72 @@ export function OperationsFileUploadPanel({
 
 
   const handleUploadSurveyData = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const filesToUpload = Array.from(event.target.files || []);
+    if (filesToUpload.length === 0) return;
 
     await ensureClaimed();
 
     setIsUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(5);
+
+    const newlyRegistered: any[] = [];
+    let lastStage: string | undefined;
 
     try {
-      setUploadProgress(40);
-      const uploadResult = await uploadProjectFile(file, projectId);
-      setUploadProgress(70);
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+        const baseProgress = Math.round((i / filesToUpload.length) * 100);
+        setUploadProgress(Math.min(95, baseProgress + 10));
 
-      const registerResult = await registerFileAction({
-        project_id: projectId,
-        category: 'survey_data',
-        file_name: uploadResult.fileName,
-        file_url: uploadResult.publicUrl,
-        mime_type: uploadResult.mimeType,
-        file_size: uploadResult.fileSize,
-        storage_bucket: 'project-assets',
-      });
+        const uploadResult = await uploadProjectFile(file, projectId);
+        const registerResult = await registerFileAction({
+          project_id: projectId,
+          category: 'survey_data',
+          file_name: uploadResult.fileName,
+          file_url: uploadResult.publicUrl,
+          mime_type: uploadResult.mimeType,
+          file_size: uploadResult.fileSize,
+          storage_bucket: 'project-assets',
+        });
 
-      if (!registerResult.success) {
-        throw new Error(registerResult.error || 'Failed to register file in database');
+        if (!registerResult.success) {
+          throw new Error(registerResult.error || `Failed to register ${file.name}`);
+        }
+
+        if (registerResult.data) {
+          newlyRegistered.push(registerResult.data);
+          if (registerResult.data.updated_project_stage) {
+            lastStage = registerResult.data.updated_project_stage;
+          }
+        }
       }
 
       setUploadProgress(100);
       toast({
         title: 'Upload Successful',
-        description: `"${file.name}" uploaded to Survey Data.`,
+        description: filesToUpload.length === 1
+          ? `"${filesToUpload[0].name}" uploaded to Survey Data.`
+          : `${filesToUpload.length} files uploaded to Survey Data.`,
         variant: 'success'
       });
 
       setIsUploading(false);
       setUploadProgress(0);
-      onUpdateFiles?.([registerResult.data, ...files]);
-      setSessionUploadedDocIds(prev => new Set(prev).add(registerResult.data?.id || uploadResult.fileName));
-      setSubmittedSections(prev => { const n = { ...prev }; delete n.survey; return n; });
+      if (newlyRegistered.length > 0) {
+        onUpdateFiles?.([...newlyRegistered, ...files]);
+        setSessionUploadedDocIds(prev => {
+          const next = new Set(prev);
+          newlyRegistered.forEach(r => next.add(r.id || r.file_name));
+          return next;
+        });
+        setSubmittedSections(prev => { const n = { ...prev }; delete n.survey; return n; });
+      }
 
-      if (registerResult.data?.updated_project_stage) {
-        onUpdateProject?.({ status: registerResult.data.updated_project_stage });
+      if (lastStage) {
+        onUpdateProject?.({ status: lastStage });
         toast({
           title: 'Workflow Rewound',
-          description: `New survey data uploaded. Project moved back to ${registerResult.data.updated_project_stage} to resume work.`,
+          description: `New survey data uploaded. Project moved back to ${lastStage} to resume work.`,
           variant: 'default'
         });
         router.refresh();
@@ -534,74 +607,104 @@ export function OperationsFileUploadPanel({
     } catch (err: any) {
       console.error(err);
       setIsUploading(false);
+      if (newlyRegistered.length > 0) {
+        onUpdateFiles?.([...newlyRegistered, ...files]);
+      }
       toast({
         title: 'Upload Failed',
         description: err.message || 'File upload failed.',
         variant: 'error'
       });
+    } finally {
+      event.target.value = '';
     }
   };
 
   const handleUploadFinalDoc = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const filesToUpload = Array.from(event.target.files || []);
+    if (filesToUpload.length === 0) return;
 
     await ensureClaimed();
 
     setIsUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(5);
+
+    const newlyRegistered: any[] = [];
+    let lastStage: string | undefined;
 
     try {
-      setUploadProgress(40);
-      const uploadResult = await uploadProjectFile(file, projectId);
-      setUploadProgress(70);
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+        const baseProgress = Math.round((i / filesToUpload.length) * 100);
+        setUploadProgress(Math.min(95, baseProgress + 10));
 
-      const registerResult = await registerFileAction({
-        project_id: projectId,
-        category: 'final_file',
-        file_name: uploadResult.fileName,
-        file_url: uploadResult.publicUrl,
-        mime_type: uploadResult.mimeType,
-        file_size: uploadResult.fileSize,
-        storage_bucket: 'project-assets',
-      });
+        const uploadResult = await uploadProjectFile(file, projectId);
+        const registerResult = await registerFileAction({
+          project_id: projectId,
+          category: 'final_file',
+          file_name: uploadResult.fileName,
+          file_url: uploadResult.publicUrl,
+          mime_type: uploadResult.mimeType,
+          file_size: uploadResult.fileSize,
+          storage_bucket: 'project-assets',
+        });
 
-      if (!registerResult.success) {
-        throw new Error(registerResult.error || 'Failed to register file in database');
+        if (!registerResult.success) {
+          throw new Error(registerResult.error || `Failed to register ${file.name}`);
+        }
+
+        if (registerResult.data) {
+          newlyRegistered.push(registerResult.data);
+          if (registerResult.data.updated_project_stage) {
+            lastStage = registerResult.data.updated_project_stage;
+          }
+        }
       }
 
       setUploadProgress(100);
       toast({
         title: 'Upload Successful',
-        description: `"${file.name}" uploaded to Final Deliverables.`,
+        description: filesToUpload.length === 1
+          ? `"${filesToUpload[0].name}" uploaded to Final Deliverables.`
+          : `${filesToUpload.length} files uploaded to Final Deliverables.`,
         variant: 'success'
       });
 
       setIsUploading(false);
       setUploadProgress(0);
-      onUpdateFiles?.([registerResult.data, ...files]);
-      setSessionUploadedDocIds(prev => new Set(prev).add(registerResult.data?.id || uploadResult.fileName));
-      setSubmittedSections(prev => { const n = { ...prev }; delete n.final; return n; });
+      if (newlyRegistered.length > 0) {
+        onUpdateFiles?.([...newlyRegistered, ...files]);
+        setSessionUploadedDocIds(prev => {
+          const next = new Set(prev);
+          newlyRegistered.forEach(r => next.add(r.id || r.file_name));
+          return next;
+        });
+        setSubmittedSections(prev => { const n = { ...prev }; delete n.final; return n; });
+      }
 
-      if (registerResult.data?.updated_project_stage) {
-        onUpdateProject?.({ status: registerResult.data.updated_project_stage });
+      if (lastStage) {
+        onUpdateProject?.({ status: lastStage });
         toast({
           title: 'Workflow Rewound',
-          description: `New deliverable uploaded. Project status moved to ${registerResult.data.updated_project_stage}.`,
+          description: `New deliverable uploaded. Project status moved to ${lastStage}.`,
           variant: 'default'
         });
-        router.refresh();
       }
 
       router.refresh();
     } catch (err: any) {
       console.error(err);
       setIsUploading(false);
+      if (newlyRegistered.length > 0) {
+        onUpdateFiles?.([...newlyRegistered, ...files]);
+      }
       toast({
         title: 'Upload Failed',
         description: err.message || 'File upload failed.',
         variant: 'error'
       });
+    } finally {
+      event.target.value = '';
     }
   };
 
@@ -943,7 +1046,7 @@ export function OperationsFileUploadPanel({
           (isAdmin || isEngineer) && !isProjectClosed && (
             <label className="px-3 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 cursor-pointer transition flex items-center gap-2 shadow-sm text-xs font-bold border border-indigo-100 dark:border-indigo-500/20">
               <Plus className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Upload</span>
-              <input type="file" className="hidden" onChange={handleUploadClientDoc} disabled={isUploading} />
+              <input type="file" multiple className="hidden" onChange={handleUploadClientDoc} disabled={isUploading} />
             </label>
           )
         }
@@ -985,7 +1088,7 @@ export function OperationsFileUploadPanel({
               <label className="h-32 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl text-center bg-slate-50/50 dark:bg-white/5 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/10 transition-colors">
                 <FolderOpen className="w-6 h-6 text-slate-400 mb-2" />
                 <p className="text-xs font-semibold text-slate-500">{(isAdmin || isEngineer) ? "Click to upload Client Document" : "No Client Documents Uploaded Yet"}</p>
-                {(isAdmin || isEngineer) && <input type="file" className="hidden" onChange={handleUploadClientDoc} disabled={isUploading} />}
+                {(isAdmin || isEngineer) && <input type="file" multiple className="hidden" onChange={handleUploadClientDoc} disabled={isUploading} />}
               </label>
             )
           )}
@@ -1042,7 +1145,7 @@ export function OperationsFileUploadPanel({
               {(isAdmin || isField) && !isProjectClosed && (
                 <label className="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 cursor-pointer transition flex items-center gap-2 shadow-sm text-xs font-bold border border-emerald-100 dark:border-emerald-500/20">
                   <Plus className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Upload Control Point</span>
-                  <input type="file" className="hidden" onChange={handleUploadControlPoint} disabled={isUploading} accept="image/*" />
+                  <input type="file" multiple className="hidden" onChange={handleUploadControlPoint} disabled={isUploading} accept="image/*" />
                 </label>
               )}
             </div>
@@ -1093,7 +1196,7 @@ export function OperationsFileUploadPanel({
               {(isAdmin || isField) && !isProjectClosed && (
                 <label className="px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 cursor-pointer transition flex items-center gap-2 shadow-sm text-xs font-bold border border-emerald-100 dark:border-emerald-500/20">
                   <Plus className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Upload Survey Data</span>
-                  <input type="file" className="hidden" onChange={handleUploadSurveyData} disabled={isUploading} />
+                  <input type="file" multiple className="hidden" onChange={handleUploadSurveyData} disabled={isUploading} />
                 </label>
               )}
             </div>
@@ -1255,7 +1358,7 @@ export function OperationsFileUploadPanel({
           (isEngineer || isAdmin) && !isProjectClosed && (
             <label className="px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-500/20 cursor-pointer transition flex items-center gap-2 shadow-sm text-xs font-bold border border-blue-100 dark:border-blue-500/20">
               <Plus className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Upload</span>
-              <input type="file" className="hidden" onChange={handleUploadFinalDoc} disabled={isUploading} />
+              <input type="file" multiple className="hidden" onChange={handleUploadFinalDoc} disabled={isUploading} />
             </label>
           )
         }
@@ -1297,7 +1400,7 @@ export function OperationsFileUploadPanel({
               <label className="h-32 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl text-center bg-slate-50/50 dark:bg-white/5 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/10 transition-colors">
                 <FolderOpen className="w-6 h-6 text-slate-400 mb-2" />
                 <p className="text-xs font-semibold text-slate-500">Click to upload Final Deliverable</p>
-                <input type="file" className="hidden" onChange={handleUploadFinalDoc} disabled={isUploading} />
+                <input type="file" multiple className="hidden" onChange={handleUploadFinalDoc} disabled={isUploading} />
               </label>
             ) : (
               <div className="h-32 flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl text-center bg-slate-50/50 dark:bg-white/5 opacity-60">

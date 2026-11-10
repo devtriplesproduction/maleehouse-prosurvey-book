@@ -544,7 +544,7 @@ export function SalesProjectPortal({ project, comments = [], files = [] }: Sales
                       <Upload className="w-4 h-4 mr-2 shrink-0" />
                     )}
                     <span className="truncate max-w-[200px] px-1">
-                      {isUploading ? 'Uploading...' : 'Select Document'}
+                      {isUploading ? 'Uploading...' : 'Upload Document(s)'}
                     </span>
                     <input
                       id="sales-file-input"

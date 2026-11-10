@@ -127,42 +127,58 @@ export function OperationsControlCenter({
   };
 
   const handleUploadIntakeDoc = async (event: React.ChangeEvent<HTMLInputElement>, category: string) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const filesToUpload = Array.from(event.target.files || []);
+    if (filesToUpload.length === 0) return;
 
     setIsUploadingDoc(true);
     setUploadingDocCategory(category);
 
     try {
-      const uploadResult = await uploadProjectFile(file, projectId);
-      const registerResult = await registerFileAction({
-        project_id: projectId,
-        category: category as any,
-        file_name: uploadResult.fileName,
-        file_url: uploadResult.publicUrl,
-        mime_type: uploadResult.mimeType,
-        file_size: uploadResult.fileSize,
-        storage_bucket: 'project-assets',
+      let lastStage: string | undefined;
+
+      for (const file of filesToUpload) {
+        const uploadResult = await uploadProjectFile(file, projectId);
+        const registerResult = await registerFileAction({
+          project_id: projectId,
+          category: category as any,
+          file_name: uploadResult.fileName,
+          file_url: uploadResult.publicUrl,
+          mime_type: uploadResult.mimeType,
+          file_size: uploadResult.fileSize,
+          storage_bucket: 'project-assets',
+        });
+
+        if (!registerResult.success) {
+          throw new Error(registerResult.error || `Failed to register ${file.name}`);
+        }
+
+        if (registerResult.data?.updated_project_stage) {
+          lastStage = registerResult.data.updated_project_stage;
+        }
+      }
+
+      toast({
+        title: "Documents Uploaded",
+        description: filesToUpload.length === 1 
+          ? `"${filesToUpload[0].name}" uploaded successfully.` 
+          : `${filesToUpload.length} documents uploaded successfully.`,
+        variant: "success"
       });
 
-      if (registerResult.success) {
-        toast({ title: "Document Uploaded", description: `"${file.name}" uploaded successfully.`, variant: "success" });
-        if (registerResult.data?.updated_project_stage) {
-          toast({
-            title: "Workflow Rewound",
-            description: `Project state updated to ${registerResult.data.updated_project_stage} to resume work.`,
-            variant: "default"
-          });
-          router.refresh();
-        }
-      } else {
-        throw new Error(registerResult.error || "Failed to register file in database");
+      if (lastStage) {
+        toast({
+          title: "Workflow Rewound",
+          description: `Project state updated to ${lastStage} to resume work.`,
+          variant: "default"
+        });
       }
+      router.refresh();
     } catch (err: any) {
       toast({ title: "Upload Failed", description: err.message, variant: "error" });
     } finally {
       setIsUploadingDoc(false);
       setUploadingDocCategory(null);
+      event.target.value = '';
     }
   };
 

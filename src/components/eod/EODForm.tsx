@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { submitEODAction } from '@/actions/eod.actions';
 import { uploadEODPhotoAction } from '@/actions/storage.actions';
-import { Send, Clock, AlertCircle, CheckCircle2, Camera, X } from 'lucide-react';
+import { Send, Clock, AlertCircle, CheckCircle2, Camera, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PremiumDatePicker } from '@/components/ui/PremiumDatePicker';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -100,7 +100,7 @@ export function EODForm({ reports = [], allReports = [], onSuccess, staff, curre
   const getLocalStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
   const [selectedDate, setSelectedDate] = useState<string>(getLocalStr(new Date()));
-  const [photo, setPhoto] = useState<File | null>(null);
+  const [photos, setPhotos] = useState<File[]>([]);
 
   const isSubmittingForOther = selectedUser !== 'myself';
   const canSelectDate = currentUserRole === 'admin' || currentUserRole === 'hr';
@@ -179,16 +179,18 @@ export function EODForm({ reports = [], allReports = [], onSuccess, staff, curre
     try {
       let finalTasks = formData.tasks_completed.trim();
 
-      if (photo && formData.work_location === 'field') {
-        const uploadForm = new FormData();
-        uploadForm.append('file', photo);
-        const uploadRes = await uploadEODPhotoAction(uploadForm);
-        if (!uploadRes.success) {
-          toast.error(uploadRes.error || 'Failed to upload photo');
-          setLoading(false);
-          return;
+      if (photos.length > 0 && formData.work_location === 'field') {
+        for (const pic of photos) {
+          const uploadForm = new FormData();
+          uploadForm.append('file', pic);
+          const uploadRes = await uploadEODPhotoAction(uploadForm);
+          if (!uploadRes.success) {
+            toast.error(uploadRes.error || `Failed to upload photo: ${pic.name}`);
+            setLoading(false);
+            return;
+          }
+          finalTasks += `\n\n![Field Photo](${uploadRes.url})`;
         }
-        finalTasks += `\n\n![Field Photo](${uploadRes.url})`;
       }
 
       const response = await submitEODAction({
@@ -208,7 +210,7 @@ export function EODForm({ reports = [], allReports = [], onSuccess, staff, curre
           blockers: '',
           work_location: 'office'
         });
-        setPhoto(null);
+        setPhotos([]);
         if (onSuccess) onSuccess();
         router.refresh();
       } else {
@@ -319,10 +321,38 @@ export function EODForm({ reports = [], allReports = [], onSuccess, staff, curre
 
             {formData.work_location === 'field' && (
               <div className="pt-2 animate-in fade-in zoom-in-95 duration-200">
-                <label className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mb-3">
-                  Field Photo Attachment
-                </label>
-                {!photo ? (
+                <div className="flex items-center justify-between mb-3">
+                  <label className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                    Field Photo Attachments {photos.length > 0 && `(${photos.length})`}
+                  </label>
+                  {photos.length > 0 && !hasSubmitted && !loading && (
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('field-photo-upload')?.click()}
+                      className="text-xs font-bold text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add More Photos
+                    </button>
+                  )}
+                </div>
+
+                <input
+                  id="field-photo-upload"
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.files || []);
+                    if (selected.length > 0) {
+                      setPhotos(prev => [...prev, ...selected]);
+                      e.target.value = '';
+                    }
+                  }}
+                  disabled={hasSubmitted}
+                />
+
+                {photos.length === 0 ? (
                   <div
                     onClick={() => !hasSubmitted && document.getElementById('field-photo-upload')?.click()}
                     className={cn(
@@ -332,55 +362,50 @@ export function EODForm({ reports = [], allReports = [], onSuccess, staff, curre
                         : "border-indigo-500/20 bg-indigo-500/5 hover:bg-indigo-500/10 cursor-pointer group"
                     )}
                   >
-                    <input
-                      id="field-photo-upload"
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) setPhoto(file);
-                      }}
-                      disabled={hasSubmitted}
-                    />
                     <div className="p-4 rounded-full bg-white dark:bg-[#070b14]/50 shadow-sm border border-slate-200 dark:border-white/5 mb-3 group-hover:scale-110 group-active:scale-95 transition-transform duration-200">
                       <Camera className="w-6 h-6 text-indigo-500" />
                     </div>
                     <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                      Click to upload a field photo
+                      Click to upload field photos (select multiple at once)
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">
-                      JPG, PNG, WebP up to 10MB
+                      JPG, PNG, WebP up to 10MB each
                     </p>
                   </div>
                 ) : (
-                  <div className="glass-card p-4 border border-indigo-500/20 bg-indigo-500/5 flex items-center justify-between rounded-2xl">
-                    <div className="flex items-center gap-4 min-w-0">
-                      <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center shrink-0 overflow-hidden relative">
-                        {photo.type.startsWith('image/') ? (
-                          <img src={URL.createObjectURL(photo)} alt="preview" className="w-full h-full object-cover" />
-                        ) : (
-                          <Camera className="w-5 h-5 text-indigo-500" />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate pr-4">
-                          {photo.name}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {(photo.size / (1024 * 1024)).toFixed(2)} MB
-                        </p>
-                      </div>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
+                      {photos.map((pic, idx) => (
+                        <div key={`${pic.name}-${idx}`} className="glass-card p-3 border border-indigo-500/20 bg-indigo-500/5 flex items-center justify-between rounded-xl">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center shrink-0 overflow-hidden relative">
+                              {pic.type.startsWith('image/') ? (
+                                <img src={URL.createObjectURL(pic)} alt="preview" className="w-full h-full object-cover" />
+                              ) : (
+                                <Camera className="w-5 h-5 text-indigo-500" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate pr-2">
+                                {pic.name}
+                              </p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                                {(pic.size / (1024 * 1024)).toFixed(2)} MB
+                              </p>
+                            </div>
+                          </div>
+                          {!hasSubmitted && !loading && (
+                            <button
+                              type="button"
+                              onClick={() => setPhotos(prev => prev.filter((_, i) => i !== idx))}
+                              className="p-1.5 bg-white dark:bg-[#070b14]/50 hover:bg-rose-50 dark:hover:bg-rose-950/20 border border-slate-200 dark:border-white/5 rounded-full text-slate-400 hover:text-rose-500 transition-colors shrink-0 shadow-sm"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                    {!hasSubmitted && !loading && (
-                      <button
-                        type="button"
-                        onClick={() => setPhoto(null)}
-                        className="p-2 bg-white dark:bg-[#070b14]/50 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 border border-slate-200 dark:border-white/5 rounded-full text-slate-400 hover:text-indigo-500 transition-colors shrink-0 shadow-sm"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
                   </div>
                 )}
               </div>

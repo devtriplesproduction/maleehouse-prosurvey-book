@@ -134,42 +134,57 @@ export default function ProjectDocumentsTab({
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!activeFolder) return;
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const filesToUpload = Array.from(event.target.files || []);
+    if (filesToUpload.length === 0) return;
 
     setIsUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(5);
+
+    const newlyRegistered: any[] = [];
+    let lastStage: string | undefined;
 
     try {
-      setUploadProgress(40);
-      const uploadResult = await uploadProjectFile(file, projectId);
-      setUploadProgress(70);
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+        const baseProgress = Math.round((i / filesToUpload.length) * 100);
+        setUploadProgress(Math.min(95, baseProgress + 10));
 
-      const registerResult = await registerFileAction({
-        project_id: projectId,
-        category: activeFolder.defaultCategory as any,
-        file_name: uploadResult.fileName,
-        file_url: uploadResult.publicUrl,
-        mime_type: uploadResult.mimeType,
-        file_size: uploadResult.fileSize,
-        storage_bucket: 'project-assets',
-      });
+        const uploadResult = await uploadProjectFile(file, projectId);
+        const registerResult = await registerFileAction({
+          project_id: projectId,
+          category: activeFolder.defaultCategory as any,
+          file_name: uploadResult.fileName,
+          file_url: uploadResult.publicUrl,
+          mime_type: uploadResult.mimeType,
+          file_size: uploadResult.fileSize,
+          storage_bucket: 'project-assets',
+        });
 
-      if (!registerResult.success) {
-        throw new Error(registerResult.error || 'Failed to register file in vault database');
+        if (!registerResult.success) {
+          throw new Error(registerResult.error || `Failed to register ${file.name}`);
+        }
+
+        if (registerResult.data) {
+          newlyRegistered.push(registerResult.data);
+          if (registerResult.data.updated_project_stage) {
+            lastStage = registerResult.data.updated_project_stage;
+          }
+        }
       }
 
       setUploadProgress(100);
       toast({
         title: 'Upload Successful',
-        description: `"${file.name}" uploaded to ${activeFolder.name}.`,
+        description: filesToUpload.length === 1
+          ? `"${filesToUpload[0].name}" uploaded to ${activeFolder.name}.`
+          : `${filesToUpload.length} files uploaded to ${activeFolder.name}.`,
         variant: 'success'
       });
 
-      if (registerResult.data?.updated_project_stage) {
+      if (lastStage) {
         toast({
           title: 'Workflow Rewound',
-          description: `Project state updated to ${registerResult.data.updated_project_stage} to resume work.`,
+          description: `Project state updated to ${lastStage} to resume work.`,
           variant: 'default'
         });
         router.refresh();
@@ -178,19 +193,24 @@ export default function ProjectDocumentsTab({
       setTimeout(() => {
         setIsUploading(false);
         setUploadProgress(0);
-        if (onUpdateFiles && registerResult.data) {
-          onUpdateFiles([registerResult.data, ...files]);
+        if (onUpdateFiles && newlyRegistered.length > 0) {
+          onUpdateFiles([...newlyRegistered, ...files]);
         }
       }, 600);
 
     } catch (err: any) {
       console.error(err);
       setIsUploading(false);
+      if (onUpdateFiles && newlyRegistered.length > 0) {
+        onUpdateFiles([...newlyRegistered, ...files]);
+      }
       toast({
         title: 'Upload Failed',
         description: err.message || 'File upload failed.',
         variant: 'error'
       });
+    } finally {
+      event.target.value = '';
     }
   };
 
@@ -320,6 +340,7 @@ export default function ProjectDocumentsTab({
                   <Upload className="w-4 h-4" /> Upload Resource
                   <input
                     type="file"
+                    multiple
                     className="hidden"
                     onChange={handleUpload}
                   />

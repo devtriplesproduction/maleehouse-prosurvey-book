@@ -156,45 +156,64 @@ export function DigitalVault({ projectId, files, userRole }: DigitalVaultProps) 
 
   // Handle file uploads (General and Control Points)
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>, targetCategory: string) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const filesToUpload = Array.from(event.target.files || []);
+    if (filesToUpload.length === 0) return;
 
     setIsUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(5);
     setUploadError('');
 
+    const newlyRegistered: any[] = [];
+    let lastStage: string | undefined;
+
     try {
-      setUploadProgress(30);
-      const uploadResult = await uploadProjectFile(file, projectId);
-      setUploadProgress(70);
+      for (let i = 0; i < filesToUpload.length; i++) {
+        const file = filesToUpload[i];
+        const baseProgress = Math.round((i / filesToUpload.length) * 100);
+        setUploadProgress(Math.min(95, baseProgress + 10));
 
-      const registerResult = await registerFileAction({
-        project_id: projectId,
-        category: targetCategory as any,
-        file_name: uploadResult.fileName,
-        file_url: uploadResult.publicUrl,
-        mime_type: uploadResult.mimeType,
-        file_size: uploadResult.fileSize,
-        storage_bucket: 'project-assets',
-      });
+        const uploadResult = await uploadProjectFile(file, projectId);
+        const registerResult = await registerFileAction({
+          project_id: projectId,
+          category: targetCategory as any,
+          file_name: uploadResult.fileName,
+          file_url: uploadResult.publicUrl,
+          mime_type: uploadResult.mimeType,
+          file_size: uploadResult.fileSize,
+          storage_bucket: 'project-assets',
+        });
 
-      if (!registerResult.success) {
-        throw new Error(registerResult.error || 'Failed to register file in vault database');
+        if (!registerResult.success) {
+          throw new Error(registerResult.error || `Failed to register ${file.name}`);
+        }
+
+        if (registerResult.data) {
+          newlyRegistered.push(registerResult.data);
+          if (registerResult.data.updated_project_stage) {
+            lastStage = registerResult.data.updated_project_stage;
+          }
+        }
       }
 
       setUploadProgress(100);
       toast({
         title: 'Upload Successful',
-        description: `"${file.name}" has been synchronized with the Digital Vault.`,
+        description: filesToUpload.length === 1
+          ? `"${filesToUpload[0].name}" has been synchronized with the Digital Vault.`
+          : `${filesToUpload.length} files have been synchronized with the Digital Vault.`,
         variant: 'success'
       });
 
-      if (registerResult.data?.updated_project_stage) {
+      if (lastStage) {
         toast({
           title: 'Workflow Rewound',
-          description: `Project state updated to ${registerResult.data.updated_project_stage} to resume work.`,
+          description: `Project state updated to ${lastStage} to resume work.`,
           variant: 'default'
         });
+      }
+
+      if (newlyRegistered.length > 0) {
+        setLocalFiles(prev => [...newlyRegistered, ...prev]);
       }
 
       setTimeout(() => {
@@ -207,11 +226,16 @@ export function DigitalVault({ projectId, files, userRole }: DigitalVaultProps) 
       console.error(err);
       setUploadError(err.message || 'Failed to upload resource.');
       setIsUploading(false);
+      if (newlyRegistered.length > 0) {
+        setLocalFiles(prev => [...newlyRegistered, ...prev]);
+      }
       toast({
         title: 'Upload Failed',
         description: err.message || 'File upload failed.',
         variant: 'error'
       });
+    } finally {
+      event.target.value = '';
     }
   };
 
@@ -348,6 +372,7 @@ export function DigitalVault({ projectId, files, userRole }: DigitalVaultProps) 
                         <Upload className="w-3.5 h-3.5" /> Upload Image
                         <input 
                           type="file" 
+                          multiple
                           accept="image/*" 
                           className="hidden" 
                           onChange={(e) => handleUpload(e, 'control_point_image')}
@@ -412,6 +437,7 @@ export function DigitalVault({ projectId, files, userRole }: DigitalVaultProps) 
                         <Upload className="w-3.5 h-3.5" /> Upload CSV
                         <input 
                           type="file" 
+                          multiple
                           accept=".csv,text/csv" 
                           className="hidden" 
                           onChange={(e) => handleUpload(e, 'control_point_csv')}
@@ -456,9 +482,10 @@ export function DigitalVault({ projectId, files, userRole }: DigitalVaultProps) 
               <p className="text-xs text-slate-400 mt-1">Select blueprints, data, drawings, or reports</p>
             </div>
             <label className="px-4 py-2 rounded-xl bg-slate-800 dark:bg-white/5 hover:bg-slate-700 dark:hover:bg-white/10 text-xs font-bold text-white dark:text-slate-200 transition-all flex items-center gap-1.5 cursor-pointer border border-transparent dark:border-white/10">
-              Choose File
+              Choose Files
               <input 
                 type="file" 
+                multiple
                 className="hidden" 
                 onChange={(e) => {
                   const catMap: Record<VaultTab, string> = {
